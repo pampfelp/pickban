@@ -16,6 +16,39 @@
 
 * { box-sizing: border-box; }
 
+/* ===== INSTALAR APP ===== */
+.install-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  width: calc(100% - 32px);
+  max-width: 420px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 1000;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  font-size: 13px;
+}
+
+.install-banner-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.install-banner-actions .primary-btn,
+.install-banner-actions .secondary-btn {
+  margin-top: 0;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
 body {
   margin: 0;
   font-family: "Segoe UI", Roboto, Arial, sans-serif;
@@ -534,6 +567,26 @@ h2 { margin-top: 0; }
 .tag-ban { color: var(--ban); }
 .tag-pick { color: var(--pick); }
 .tag-timeout { color: var(--text-dim); font-style: italic; }
+
+.char-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.char-thumb-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: 9px;
+  font-weight: 700;
+}
 
 .char-counts {
   display: flex;

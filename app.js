@@ -57,6 +57,13 @@ function avatarHtml(person, size) {
   return `<div class="avatar ${sizeClass}">${escapeHtml(getInitials(person && person.name))}</div>`;
 }
 
+function characterThumbHtml(character) {
+  if (character && character.image) {
+    return `<img class="char-thumb" src="${character.image}" alt="${escapeHtml(character.name)}">`;
+  }
+  return `<span class="char-thumb char-thumb-placeholder">${escapeHtml(getInitials(character && character.name))}</span>`;
+}
+
 function toast(msg) {
   const el = document.getElementById("toast");
   el.textContent = msg;
@@ -743,13 +750,13 @@ function renderResultsRow(container, match, showLimits) {
     r.bans.forEach(c => {
       const line = document.createElement("div");
       line.className = "result-row";
-      line.innerHTML = `<span class="tag-ban">✕ ban</span> ${escapeHtml(c.name)}`;
+      line.innerHTML = `<span class="tag-ban">✕ ban</span> ${characterThumbHtml(c)} ${escapeHtml(c.name)}`;
       card.appendChild(line);
     });
     r.picks.forEach(c => {
       const line = document.createElement("div");
       line.className = "result-row";
-      line.innerHTML = `<span class="tag-pick">✓ pick</span> ${escapeHtml(c.name)}`;
+      line.innerHTML = `<span class="tag-pick">✓ pick</span> ${characterThumbHtml(c)} ${escapeHtml(c.name)}`;
       card.appendChild(line);
     });
 
@@ -1192,4 +1199,76 @@ function renderPlayerList() {
     });
     list.appendChild(item);
   });
+}
+
+/* =========================
+   PWA: SERVICE WORKER + BANNER DE INSTALAÇÃO
+========================= */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("service-worker.js").catch(() => {});
+  });
+}
+
+let deferredInstallPrompt = null;
+const INSTALL_DISMISS_KEY = "smashup_install_dismissed_at";
+const INSTALL_DISMISS_DAYS = 7;
+
+function isStandaloneDisplay() {
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+
+function wasInstallBannerRecentlyDismissed() {
+  const ts = localStorage.getItem(INSTALL_DISMISS_KEY);
+  if (!ts) return false;
+  const days = (Date.now() - Number(ts)) / (1000 * 60 * 60 * 24);
+  return days < INSTALL_DISMISS_DAYS;
+}
+
+function isIosDevice() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
+function showInstallBanner(mode) {
+  if (isStandaloneDisplay() || wasInstallBannerRecentlyDismissed()) return;
+
+  const banner = document.getElementById("installBanner");
+  const text = document.getElementById("installBannerText");
+  const btn = document.getElementById("installBannerBtn");
+
+  if (mode === "prompt") {
+    text.textContent = "Instale o Smash Up Pick & Ban no seu dispositivo pra acesso rápido, como um app.";
+    btn.style.display = "inline-block";
+  } else {
+    text.textContent = 'Instale este app: toque em Compartilhar e depois em "Adicionar à Tela de Início".';
+    btn.style.display = "none";
+  }
+  banner.style.display = "flex";
+}
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  showInstallBanner("prompt");
+});
+
+document.getElementById("installBannerBtn").addEventListener("click", async () => {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  document.getElementById("installBanner").style.display = "none";
+});
+
+document.getElementById("installBannerDismiss").addEventListener("click", () => {
+  localStorage.setItem(INSTALL_DISMISS_KEY, String(Date.now()));
+  document.getElementById("installBanner").style.display = "none";
+});
+
+window.addEventListener("appinstalled", () => {
+  document.getElementById("installBanner").style.display = "none";
+});
+
+if (isIosDevice() && !isStandaloneDisplay()) {
+  setTimeout(() => showInstallBanner("ios"), 1500);
 }

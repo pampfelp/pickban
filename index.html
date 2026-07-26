@@ -5,8 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Smash Up — Pick & Ban</title>
 <link rel="stylesheet" href="style.css">
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ff5f6d">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Smash Up P&B">
 </head>
 <body>
+
+<!-- INSTALAR APP -->
+<div id="installBanner" class="install-banner" style="display:none;">
+  <span id="installBannerText"></span>
+  <div class="install-banner-actions">
+    <button id="installBannerBtn" class="primary-btn" style="display:none;">Instalar</button>
+    <button id="installBannerDismiss" class="secondary-btn">Agora não</button>
+  </div>
+</div>
 
 <!-- LOGIN -->
 <section id="loginScreen" class="login-screen">

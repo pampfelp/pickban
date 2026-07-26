@@ -17,7 +17,9 @@ App de pick/ban para Smash Up, com Google Sheets + Apps Script como backend e fo
 - **Botão de finalizar partida**: encerra manualmente a qualquer momento, mostrando o histórico completo e quem venceu (ou empate, se não houver um vencedor claro).
 - **Lobby**: lista de salas com status, contagem de jogadores e tempo decorrido. Mostra todos os jogadores cadastrados com bolinha verde/cinza de online/offline.
 - **Entrar por código**: cada sala tem um código de 5 caracteres.
+- **Excluir sala**: ícone de lixeira em cada card de sala no Lobby, com confirmação.
 - **Presença online/offline**: heartbeat a cada 10s; considerado offline depois de ~25s sem heartbeat.
+- **App instalável (PWA)**: banner de "Instalar app" aparece automaticamente (desktop/Android via prompt nativo do navegador; iOS com instrução de "Compartilhar → Adicionar à Tela de Início", já que a Apple não permite instalar programaticamente). Funciona offline para o "casco" do app (tela/estilos), mas sempre busca dados frescos da planilha.
 
 ## Fluxo completo de uma sala
 
@@ -53,10 +55,22 @@ Se aparecer algo como `Exception: Você não tem permissão para chamar DriveApp
 
 ## 3. Rodar o app
 
-O app é 100% estático (`index.html`, `style.css`, `app.js`):
+O app é 100% estático (`index.html`, `style.css`, `app.js`, `manifest.json`, `service-worker.js`, pasta `icons/`):
 
 - Abra `index.html` direto no navegador, ou
 - Suba a pasta em qualquer hospedagem estática (GitHub Pages, Netlify, Vercel) para jogar com amigos em dispositivos diferentes.
+
+**Importante para o "Instalar app" funcionar**: o service worker (exigido pelos navegadores pra permitir instalação) só registra em HTTPS ou `localhost` — abrindo o `index.html` direto do disco (`file://`) o app funciona normalmente, mas o prompt de instalação não aparece. Hospede num serviço com HTTPS (GitHub Pages, Netlify, Vercel são gratuitos) pra habilitar isso.
+
+### Trocar os ícones pela logo oficial
+
+Os ícones em `icons/` (favicon, apple-touch-icon, ícones do manifest) são um placeholder gerado automaticamente (monograma "SU"). Pra usar a logo oficial do Smash Up, salve a imagem em `icons/` nos tamanhos abaixo (mesmo nome de arquivo) e pronto — `index.html` e `manifest.json` já apontam pra esses arquivos:
+
+- `icons/favicon-16.png` (16×16)
+- `icons/favicon-32.png` (32×32)
+- `icons/apple-touch-icon.png` (180×180)
+- `icons/icon-192.png` (192×192)
+- `icons/icon-512.png` (512×512)
 
 ## Estrutura de dados na planilha
 
