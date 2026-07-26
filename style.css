@@ -720,6 +720,61 @@ h2 { margin-top: 0; }
   margin: 6px 0;
 }
 
+.score-card-picks {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.banned-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-bottom: 18px;
+  font-size: 12px;
+}
+
+.banned-summary-label {
+  color: var(--text-dim);
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.banned-summary-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+}
+
+.history-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.history-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.history-card-header .hint {
+  margin-left: 8px;
+}
+
 .round-form {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -843,4 +898,63 @@ h2 { margin-top: 0; }
 .toast.show {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+/* ===== LAYOUT MOBILE ===== */
+@media (max-width: 640px) {
+  .topbar { padding: 14px 14px 0; }
+  .topbar h1 { font-size: 18px; }
+  main { padding: 14px; }
+
+  .tabs { gap: 0; overflow-x: auto; }
+  .tab-btn { padding: 10px 12px; font-size: 13px; white-space: nowrap; }
+
+  /* Grade de personagens (disponíveis/escolhidos/banidos) vira uma faixa
+     horizontal com cards menores, em vez de quebrar linha e crescer a página. */
+  .character-grid {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding-bottom: 6px;
+  }
+
+  .character-card {
+    flex: 0 0 84px;
+    width: 84px;
+    scroll-snap-align: start;
+  }
+
+  .character-card img {
+    height: 66px;
+  }
+
+  .character-card .name {
+    font-size: 11px;
+    padding: 6px 4px;
+  }
+
+  .results-row {
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 8px;
+  }
+
+  .phase-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .score-board {
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  }
+
+  .round-inputs {
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  }
+
+  .room-code-banner strong { font-size: 22px; letter-spacing: 2px; }
+  .countdown-number { font-size: 64px; }
 }

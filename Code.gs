@@ -112,6 +112,9 @@ function doGet(e) {
       case "finishMatchManually":
         return json(finishMatchManually(e.parameter));
 
+      case "getMatchHistory":
+        return json({ matches: getMatchHistory() });
+
       default:
         return json({ error: "Ação inválida" });
     }
@@ -387,7 +390,7 @@ function joinRoom(data) {
     if (match.playerIds.length >= match.maxPlayers) return { error: "Sala cheia" };
 
     const newPlayerIds = match.playerIds.concat([String(data.playerId)]);
-    sheet.getRange(rowIndex, 6).setValue(newPlayerIds.join(","));
+    sheet.getRange(rowIndex, 6).setValue(newPlayerIds.join("|"));
 
     return getMatchState(matchId);
   });
@@ -406,7 +409,7 @@ function leaveRoom(data) {
     return { success: true, deleted: true };
   }
 
-  sheet.getRange(match.row, 6).setValue(playerIds.join(","));
+  sheet.getRange(match.row, 6).setValue(playerIds.join("|"));
 
   if (String(match.hostPlayerId) === String(data.playerId)) {
     sheet.getRange(match.row, 7).setValue(playerIds[0]);
@@ -482,7 +485,7 @@ function getMatchRow(matchId) {
     status: v[2],
     phase: v[3],
     turnIndex: Number(v[4]),
-    playerIds: String(v[5]).split(",").map(s => s.trim()).filter(Boolean),
+    playerIds: String(v[5]).split("|").map(s => s.trim()).filter(Boolean),
     hostPlayerId: v[6],
     createdAt: v[7],
     draftStartedAt: v[8],
@@ -496,7 +499,7 @@ function getMatchRow(matchId) {
     countdownStartedAt: v[16],
     winnerPlayerId: v[17],
     suddenDeath: v[18] === true || v[18] === "TRUE",
-    eligiblePlayerIds: String(v[19] || "").split(",").map(s => s.trim()).filter(Boolean)
+    eligiblePlayerIds: String(v[19] || "").split("|").map(s => s.trim()).filter(Boolean)
   };
 }
 
@@ -678,7 +681,7 @@ function evaluateMatchResult(matchId) {
         sheet.getRange(match.row, 18).setValue(leaders[0]);
       } else {
         sheet.getRange(match.row, 19).setValue(true);
-        sheet.getRange(match.row, 20).setValue(leaders.join(","));
+        sheet.getRange(match.row, 20).setValue(leaders.join("|"));
       }
     }
   } else {
@@ -694,7 +697,7 @@ function evaluateMatchResult(matchId) {
       sheet.getRange(match.row, 3).setValue("finished");
       sheet.getRange(match.row, 18).setValue(leaders[0]);
     } else if (leaders.length > 0) {
-      sheet.getRange(match.row, 20).setValue(leaders.join(","));
+      sheet.getRange(match.row, 20).setValue(leaders.join("|"));
     }
   }
 }
@@ -837,6 +840,17 @@ function getMatchState(matchId) {
 }
 
 /* =========================
+   HISTÓRICO DE PARTIDAS
+========================= */
+function getMatchHistory() {
+  const matches = sheetRows("matches")
+    .filter(m => m.status === "finished")
+    .sort((a, b) => Number(b.id) - Number(a.id));
+
+  return matches.map(m => getMatchState(m.id));
+}
+
+/* =========================
    DADOS GERAIS (players + characters + salas + status online)
 ========================= */
 function getAllData() {
@@ -852,7 +866,7 @@ function getAllData() {
   const rooms = matches
     .filter(m => m.status !== "finished")
     .map(m => {
-      const playerIds = String(m.playerIds).split(",").map(s => s.trim()).filter(Boolean);
+      const playerIds = String(m.playerIds).split("|").map(s => s.trim()).filter(Boolean);
       const playerNames = playerIds.map(pid => {
         const p = players.find(pl => String(pl.id) === pid);
         return p ? p.name : "?";

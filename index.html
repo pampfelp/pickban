@@ -59,6 +59,7 @@
       <button class="tab-btn" data-tab="game">Sala</button>
       <button class="tab-btn" data-tab="characters">Personagens</button>
       <button class="tab-btn" data-tab="players">Jogadores</button>
+      <button class="tab-btn" data-tab="history">Histórico</button>
     </nav>
   </header>
 
@@ -177,6 +178,8 @@
 
         <div id="suddenDeathBanner" class="sudden-death-banner" style="display:none;"></div>
 
+        <div id="officialBannedSummary" class="banned-summary"></div>
+
         <h3>Placar</h3>
         <div id="scoreBoard" class="score-board"></div>
 
@@ -195,6 +198,7 @@
       <!-- RESULTADO FINAL -->
       <div id="finishedScreen" style="display:none;">
         <div id="winnerBanner" class="finished-banner"></div>
+        <div id="finalBannedSummary" class="banned-summary"></div>
         <h3>Placar final</h3>
         <div id="finalScoreBoard" class="score-board"></div>
         <h3>Histórico de rodadas</h3>
@@ -235,6 +239,12 @@
         <button type="button" id="cancelPlayerEdit" class="secondary-btn" style="display:none;">Cancelar</button>
       </form>
       <div id="playerList" class="admin-list"></div>
+    </section>
+
+    <!-- HISTÓRICO -->
+    <section id="tab-history" class="tab-panel">
+      <h2>Histórico de partidas</h2>
+      <div id="historyList"></div>
     </section>
 
   </main>

@@ -29,6 +29,7 @@ let state = {
   officialTimerInterval: null,
   actionInFlight: false,
   lastMatch: null,
+  roundFormKey: null,
   pendingPhoto: {} // { login: {...}, character: {...}, player: {...} }
 };
 
@@ -314,6 +315,8 @@ function switchTab(tab) {
     renderCharacterList();
   } else if (tab === "players") {
     renderPlayerList();
+  } else if (tab === "history") {
+    renderHistoryTab();
   }
 }
 
@@ -521,6 +524,7 @@ async function joinRoomByCode(code) {
 
 function enterRoom(matchId) {
   state.matchId = String(matchId);
+  state.roundFormKey = null;
   localStorage.setItem("smashup_matchId", state.matchId);
   switchTab("game");
 }
@@ -919,12 +923,27 @@ function renderOfficialScreen(match) {
     suddenBanner.style.display = "none";
   }
 
+  renderBannedSummary(document.getElementById("officialBannedSummary"), match);
   renderScoreBoard(document.getElementById("scoreBoard"), match);
   renderRoundForm(match);
   renderRoundHistory(document.getElementById("roundHistory"), match);
 }
 
 const WIN_SCORE_JS = 15;
+
+function renderBannedSummary(container, match) {
+  if (!container) return;
+  if (!match.bannedCharacters || match.bannedCharacters.length === 0) {
+    container.innerHTML = `<span class="hint">Nenhum personagem banido nessa partida.</span>`;
+    return;
+  }
+  container.innerHTML = `
+    <span class="banned-summary-label">Banidos:</span>
+    ${match.bannedCharacters.map(c => `
+      <span class="banned-summary-item">${characterThumbHtml(c)} ${escapeHtml(c.name)}</span>
+    `).join("")}
+  `;
+}
 
 function renderScoreBoard(container, match) {
   container.innerHTML = "";
@@ -936,18 +955,30 @@ function renderScoreBoard(container, match) {
     const player = match.results.find(r => String(r.playerId) === String(e.pid));
     const card = document.createElement("div");
     card.className = "score-card" + (e.score === max && max > 0 ? " leader" : "");
+    const picksHtml = player && player.picks.length
+      ? `<div class="score-card-picks">${player.picks.map(c => characterThumbHtml(c)).join("")}</div>`
+      : "";
     card.innerHTML = `
       ${avatarHtml({ name: player ? player.playerName : "?", photo: player ? player.playerPhoto : "" }, "md")}
       <div>${escapeHtml(player ? player.playerName : "?")}</div>
       <div class="score-value">${e.score}</div>
+      ${picksHtml}
     `;
     container.appendChild(card);
   });
 }
 
+// Só reconstrói os inputs quando o grupo de jogadores elegíveis muda (ex: começo da
+// partida oficial, ou entrada em modo decisivo). Do contrário, o polling periódico
+// recriaria os campos e apagaria o que o jogador estivesse digitando antes de enviar.
 function renderRoundForm(match) {
   const eligible = match.scoreEligiblePlayerIds;
+  const key = eligible.join("|");
   const container = document.getElementById("roundInputs");
+
+  if (state.roundFormKey === key && container.children.length > 0) return;
+  state.roundFormKey = key;
+
   container.innerHTML = "";
   eligible.forEach(pid => {
     const player = match.results.find(r => String(r.playerId) === String(pid));
@@ -969,6 +1000,7 @@ document.getElementById("roundForm").addEventListener("submit", async (e) => {
 
   try {
     const updated = await api("submitRoundScores", { matchId: state.matchId, scores: JSON.stringify(scores) });
+    inputs.forEach(input => { input.value = 0; });
     state.lastMatch = updated;
     renderMatch(updated);
     toast("Rodada registrada!");
@@ -1027,6 +1059,7 @@ function renderFinishedScreen(match) {
     banner.textContent = "🤝 Partida encerrada sem um vencedor único (empate).";
   }
 
+  renderBannedSummary(document.getElementById("finalBannedSummary"), match);
   renderScoreBoard(document.getElementById("finalScoreBoard"), match);
   renderRoundHistory(document.getElementById("finalRoundHistory"), match);
   renderResultsRow(document.getElementById("finalResultsRow"), match, true);
@@ -1037,6 +1070,86 @@ document.getElementById("backToLobbyBtn").addEventListener("click", () => {
   localStorage.removeItem("smashup_matchId");
   switchTab("lobby");
 });
+
+/* =========================
+   HISTÓRICO DE PARTIDAS
+========================= */
+async function renderHistoryTab() {
+  const container = document.getElementById("historyList");
+  container.innerHTML = `<p class="hint">Carregando...</p>`;
+  try {
+    const data = await api("getMatchHistory");
+    const matches = data.matches || [];
+    container.innerHTML = "";
+    if (matches.length === 0) {
+      container.innerHTML = `<p class="hint">Nenhuma partida finalizada ainda.</p>`;
+      return;
+    }
+    matches.forEach(match => container.appendChild(buildHistoryCard(match)));
+  } catch (err) {
+    container.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function buildHistoryCard(match) {
+  const card = document.createElement("div");
+  card.className = "history-card";
+
+  const dateStr = match.officialStartedAt
+    ? new Date(match.officialStartedAt).toLocaleString("pt-BR")
+    : (match.draftStartedAt ? new Date(match.draftStartedAt).toLocaleString("pt-BR") : "");
+  const winnerText = match.winnerPlayerId
+    ? `🏆 ${escapeHtml(playerNameIn(match, match.winnerPlayerId))}`
+    : "🤝 Empate";
+
+  const header = document.createElement("div");
+  header.className = "history-card-header";
+  header.innerHTML = `
+    <div>
+      <span class="room-card-code">${escapeHtml(match.code)}</span>
+      <span class="hint">${escapeHtml(dateStr)}</span>
+    </div>
+    <div>${winnerText}</div>
+  `;
+  card.appendChild(header);
+
+  const bannedSummary = document.createElement("div");
+  bannedSummary.className = "banned-summary";
+  renderBannedSummary(bannedSummary, match);
+  card.appendChild(bannedSummary);
+
+  const scoreBoard = document.createElement("div");
+  scoreBoard.className = "score-board";
+  renderScoreBoard(scoreBoard, match);
+  card.appendChild(scoreBoard);
+
+  const toggleBtn = document.createElement("button");
+  toggleBtn.className = "secondary-btn";
+  toggleBtn.textContent = "Ver draft e histórico de rodadas";
+
+  const details = document.createElement("div");
+  details.style.display = "none";
+
+  const resultsRow = document.createElement("div");
+  resultsRow.className = "results-row";
+  renderResultsRow(resultsRow, match, true);
+  details.appendChild(resultsRow);
+
+  const roundHistory = document.createElement("div");
+  renderRoundHistory(roundHistory, match);
+  details.appendChild(roundHistory);
+
+  toggleBtn.addEventListener("click", () => {
+    const showing = details.style.display !== "none";
+    details.style.display = showing ? "none" : "block";
+    toggleBtn.textContent = showing ? "Ver draft e histórico de rodadas" : "Ocultar detalhes";
+  });
+
+  card.appendChild(toggleBtn);
+  card.appendChild(details);
+
+  return card;
+}
 
 /* =========================
    PERSONAGENS (ADMIN)
