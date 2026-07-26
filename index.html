@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smash Up — Pick & Ban</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- LOGIN -->
+<section id="loginScreen" class="login-screen">
+  <div class="login-box">
+    <h1>Smash Up — Pick &amp; Ban</h1>
+    <p class="hint">Escolha seu perfil para entrar</p>
+    <div id="loginPlayerList" class="login-player-list"></div>
+
+    <div class="login-divider">ou crie um novo perfil</div>
+
+    <form id="loginCreateForm" class="inline-form login-create-form">
+      <div class="photo-picker">
+        <div id="loginPhotoPreview" class="avatar avatar-lg avatar-placeholder">+</div>
+        <input type="file" id="loginPhotoInput" accept="image/*">
+      </div>
+      <input type="text" id="loginName" placeholder="Seu nome" required>
+      <button type="submit" class="primary-btn">Criar perfil e entrar</button>
+    </form>
+    <p id="loginError" class="error"></p>
+  </div>
+</section>
+
+<!-- APP -->
+<div id="app" style="display:none;">
+  <header class="topbar">
+    <div class="topbar-top">
+      <h1>Smash Up — Pick &amp; Ban</h1>
+      <div id="currentUserBox" class="current-user-box"></div>
+    </div>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="lobby">Lobby</button>
+      <button class="tab-btn" data-tab="game">Sala</button>
+      <button class="tab-btn" data-tab="characters">Personagens</button>
+      <button class="tab-btn" data-tab="players">Jogadores</button>
+    </nav>
+  </header>
+
+  <main>
+
+    <!-- LOBBY -->
+    <section id="tab-lobby" class="tab-panel active">
+      <div class="lobby-actions">
+        <button id="createRoomBtn" class="primary-btn">Criar Sala</button>
+        <form id="joinCodeForm" class="inline-form join-code-form">
+          <input type="text" id="joinCodeInput" placeholder="Código da sala" maxlength="5">
+          <button type="submit" class="secondary-btn">Entrar com código</button>
+        </form>
+      </div>
+      <p id="lobbyError" class="error"></p>
+
+      <h3>Salas</h3>
+      <div id="roomList" class="room-list"></div>
+
+      <h3>Jogadores</h3>
+      <div id="onlinePlayerList" class="online-player-list"></div>
+    </section>
+
+    <!-- SALA / PARTIDA -->
+    <section id="tab-game" class="tab-panel">
+      <div id="noMatch" class="empty-state">
+        <p>Você não está em nenhuma sala. Vá em "Lobby" para criar ou entrar em uma.</p>
+      </div>
+
+      <!-- SALA DE ESPERA -->
+      <div id="waitingRoom" style="display:none;">
+        <div class="room-code-banner">
+          <span>Código da sala</span>
+          <strong id="roomCodeDisplay"></strong>
+        </div>
+        <h3>Jogadores na sala</h3>
+        <div id="waitingPlayerList" class="waiting-player-list"></div>
+        <button id="startRoomBtn" class="primary-btn" style="display:none;">Iniciar Partida</button>
+        <p id="waitingHint" class="hint"></p>
+        <button id="leaveRoomBtn" class="secondary-btn">Sair da sala</button>
+      </div>
+
+      <!-- TABULEIRO -->
+      <div id="matchBoard" style="display:none;">
+        <div class="phase-banner">
+          <span id="phaseLabel"></span>
+          <span id="matchTimer" class="match-timer"></span>
+          <span id="turnLabel" class="turn-label"></span>
+        </div>
+
+        <div class="results-row" id="resultsRow"></div>
+
+        <h3 id="charactersHeading">Personagens disponíveis</h3>
+        <div id="characterGrid" class="character-grid"></div>
+
+        <div id="finishedBanner" class="finished-banner" style="display:none;"></div>
+
+        <button id="newMatchBtn" class="secondary-btn">Voltar ao lobby</button>
+      </div>
+    </section>
+
+    <!-- PERSONAGENS -->
+    <section id="tab-characters" class="tab-panel">
+      <h2>Gerenciar personagens</h2>
+      <form id="characterForm" class="inline-form">
+        <input type="hidden" id="characterId">
+        <div class="photo-picker">
+          <div id="characterPhotoPreview" class="avatar avatar-lg avatar-placeholder">+</div>
+          <input type="file" id="characterImageInput" accept="image/*">
+        </div>
+        <input type="text" id="characterName" placeholder="Nome do personagem" required>
+        <button type="submit" class="primary-btn">Salvar</button>
+        <button type="button" id="cancelCharacterEdit" class="secondary-btn" style="display:none;">Cancelar</button>
+      </form>
+      <div id="characterList" class="admin-list"></div>
+    </section>
+
+    <!-- JOGADORES -->
+    <section id="tab-players" class="tab-panel">
+      <h2>Gerenciar jogadores</h2>
+      <form id="playerForm" class="inline-form">
+        <input type="hidden" id="playerId">
+        <div class="photo-picker">
+          <div id="playerPhotoPreview" class="avatar avatar-lg avatar-placeholder">+</div>
+          <input type="file" id="playerPhotoInput" accept="image/*">
+        </div>
+        <input type="text" id="playerName" placeholder="Nome do jogador" required>
+        <button type="submit" class="primary-btn">Salvar</button>
+        <button type="button" id="cancelPlayerEdit" class="secondary-btn" style="display:none;">Cancelar</button>
+      </form>
+      <div id="playerList" class="admin-list"></div>
+    </section>
+
+  </main>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
