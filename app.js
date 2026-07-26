@@ -399,6 +399,9 @@ function renderRoomList() {
       </div>
     `;
 
+    const actions = document.createElement("div");
+    actions.className = "room-card-actions";
+
     const btn = document.createElement("button");
     btn.className = isMember ? "secondary-btn" : "primary-btn";
     if (isMember) {
@@ -411,9 +414,42 @@ function renderRoomList() {
       btn.textContent = "Indisponível";
       btn.disabled = true;
     }
-    card.appendChild(btn);
+    actions.appendChild(btn);
+    actions.appendChild(buildDeleteRoomButton(room));
+
+    card.appendChild(actions);
     list.appendChild(card);
   });
+}
+
+function buildDeleteRoomButton(room) {
+  const trashBtn = document.createElement("button");
+  trashBtn.className = "trash-btn";
+  trashBtn.title = "Excluir sala";
+  trashBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"></polyline>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+      <path d="M10 11v6"></path>
+      <path d="M14 11v6"></path>
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+    </svg>
+  `;
+  trashBtn.addEventListener("click", async () => {
+    if (!confirm(`Excluir a sala ${room.code}? Isso apaga a sala e todo o progresso dela, sem volta.`)) return;
+    try {
+      await api("deleteMatch", { matchId: room.matchId });
+      if (String(state.matchId) === String(room.matchId)) {
+        state.matchId = null;
+        localStorage.removeItem("smashup_matchId");
+      }
+      toast("Sala excluída");
+      await refreshLobby();
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+  return trashBtn;
 }
 
 function renderOnlinePlayerList() {

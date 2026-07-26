@@ -245,6 +245,29 @@ h2 { margin-top: 0; }
 }
 
 .room-card-info { display: flex; flex-direction: column; gap: 4px; }
+
+.room-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trash-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ban);
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trash-btn:hover {
+  background: rgba(229, 72, 77, 0.15);
+  border-color: var(--ban);
+}
 .room-card-code { font-weight: 700; letter-spacing: 1px; }
 .room-card-meta { font-size: 12px; color: var(--text-dim); }
 

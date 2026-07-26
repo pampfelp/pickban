@@ -135,6 +135,20 @@ function doPost(e) {
 /* =========================
    UTIL
 ========================= */
+// Apps Script não serializa chamadas concorrentes à planilha por padrão — sem isso,
+// duas ações quase simultâneas podem ler o mesmo estado "antigo" antes de qualquer
+// uma escrever de volta, e ambas passam pela validação (condição de corrida).
+// withLock() serializa a seção crítica para eliminar esse tipo de brecha.
+function withLock(fn) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    return fn();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function json(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
@@ -344,31 +358,33 @@ function createRoom(data) {
 }
 
 function joinRoom(data) {
-  if (!data.code || !data.playerId) return { error: "code e playerId são obrigatórios" };
+  return withLock(() => {
+    if (!data.code || !data.playerId) return { error: "code e playerId são obrigatórios" };
 
-  const sheet = getSheet("matches");
-  const values = sheet.getDataRange().getValues();
-  let rowIndex = -1, matchId = null;
+    const sheet = getSheet("matches");
+    const values = sheet.getDataRange().getValues();
+    let rowIndex = -1, matchId = null;
 
-  for (let i = 1; i < values.length; i++) {
-    if (String(values[i][1]).toUpperCase() === String(data.code).toUpperCase()) {
-      rowIndex = i + 1;
-      matchId = values[i][0];
-      break;
+    for (let i = 1; i < values.length; i++) {
+      if (String(values[i][1]).toUpperCase() === String(data.code).toUpperCase()) {
+        rowIndex = i + 1;
+        matchId = values[i][0];
+        break;
+      }
     }
-  }
 
-  if (rowIndex === -1) return { error: "Sala não encontrada" };
+    if (rowIndex === -1) return { error: "Sala não encontrada" };
 
-  const match = getMatchRow(matchId);
-  if (match.status !== "waiting") return { error: "Essa sala já começou ou terminou" };
-  if (match.playerIds.indexOf(String(data.playerId)) !== -1) return getMatchState(matchId);
-  if (match.playerIds.length >= match.maxPlayers) return { error: "Sala cheia" };
+    const match = getMatchRow(matchId);
+    if (match.status !== "waiting") return { error: "Essa sala já começou ou terminou" };
+    if (match.playerIds.indexOf(String(data.playerId)) !== -1) return getMatchState(matchId);
+    if (match.playerIds.length >= match.maxPlayers) return { error: "Sala cheia" };
 
-  const newPlayerIds = match.playerIds.concat([String(data.playerId)]);
-  sheet.getRange(rowIndex, 6).setValue(newPlayerIds.join(","));
+    const newPlayerIds = match.playerIds.concat([String(data.playerId)]);
+    sheet.getRange(rowIndex, 6).setValue(newPlayerIds.join(","));
 
-  return getMatchState(matchId);
+    return getMatchState(matchId);
+  });
 }
 
 function leaveRoom(data) {
@@ -394,25 +410,27 @@ function leaveRoom(data) {
 }
 
 function startRoom(data) {
-  const match = getMatchRow(data.matchId);
-  if (!match) return { error: "Sala não encontrada" };
-  if (match.status !== "waiting") return { error: "Sala já foi iniciada" };
-  if (String(match.hostPlayerId) !== String(data.hostPlayerId)) return { error: "Só o host pode iniciar a partida" };
-  if (match.playerIds.length !== match.maxPlayers) {
-    return { error: `A sala precisa ter exatamente ${match.maxPlayers} jogadores para iniciar (atual: ${match.playerIds.length})` };
-  }
+  return withLock(() => {
+    const match = getMatchRow(data.matchId);
+    if (!match) return { error: "Sala não encontrada" };
+    if (match.status !== "waiting") return { error: "Sala já foi iniciada" };
+    if (String(match.hostPlayerId) !== String(data.hostPlayerId)) return { error: "Só o host pode iniciar a partida" };
+    if (match.playerIds.length !== match.maxPlayers) {
+      return { error: `A sala precisa ter exatamente ${match.maxPlayers} jogadores para iniciar (atual: ${match.playerIds.length})` };
+    }
 
-  const phases = buildPhases(match.banCount, match.pickCount);
-  const sheet = getSheet("matches");
-  sheet.getRange(match.row, 3).setValue("drafting");
-  sheet.getRange(match.row, 4).setValue(phases[0]);
-  sheet.getRange(match.row, 5).setValue(0);
-  sheet.getRange(match.row, 9).setValue(new Date().toISOString()); // draftStartedAt
-  sheet.getRange(match.row, 16).setValue(
-    match.turnTimerEnabled ? new Date(Date.now() + match.turnTimerSeconds * 1000).toISOString() : ""
-  );
+    const phases = buildPhases(match.banCount, match.pickCount);
+    const sheet = getSheet("matches");
+    sheet.getRange(match.row, 3).setValue("drafting");
+    sheet.getRange(match.row, 4).setValue(phases[0]);
+    sheet.getRange(match.row, 5).setValue(0);
+    sheet.getRange(match.row, 9).setValue(new Date().toISOString()); // draftStartedAt
+    sheet.getRange(match.row, 16).setValue(
+      match.turnTimerEnabled ? new Date(Date.now() + match.turnTimerSeconds * 1000).toISOString() : ""
+    );
 
-  return getMatchState(match.id);
+    return getMatchState(match.id);
+  });
 }
 
 function skipCountdown(data) {
@@ -510,45 +528,47 @@ function maybeAdvanceCountdown(match) {
    AÇÕES (BAN / PICK)
 ========================= */
 function makeAction(data) {
-  let match = getMatchRow(data.matchId);
-  if (!match) return { error: "Partida não encontrada" };
+  return withLock(() => {
+    let match = getMatchRow(data.matchId);
+    if (!match) return { error: "Partida não encontrada" };
 
-  match = maybeProcessTimeouts(match);
-  match = maybeAdvanceCountdown(match);
+    match = maybeProcessTimeouts(match);
+    match = maybeAdvanceCountdown(match);
 
-  if (match.status !== "drafting") {
-    return { error: "O draft não está em andamento", refresh: true };
-  }
+    if (match.status !== "drafting") {
+      return { error: "O draft não está em andamento", refresh: true };
+    }
 
-  const expectedType = match.phase.indexOf("ban") === 0 ? "ban" : "pick";
-  if (data.type !== expectedType) {
-    return { error: `Ação inválida. Fase atual espera "${expectedType}"`, refresh: true };
-  }
+    const expectedType = match.phase.indexOf("ban") === 0 ? "ban" : "pick";
+    if (data.type !== expectedType) {
+      return { error: `Ação inválida. Fase atual espera "${expectedType}"`, refresh: true };
+    }
 
-  const currentPlayerId = match.playerIds[match.turnIndex];
-  if (String(data.playerId) !== String(currentPlayerId)) {
-    return { error: "Não é a vez deste jogador", refresh: true };
-  }
+    const currentPlayerId = match.playerIds[match.turnIndex];
+    if (String(data.playerId) !== String(currentPlayerId)) {
+      return { error: "Não é a vez deste jogador", refresh: true };
+    }
 
-  const usedCharacterIds = getUsedCharacterIds(data.matchId);
-  if (usedCharacterIds.indexOf(String(data.characterId)) !== -1) {
-    return { error: "Personagem já foi banido ou escolhido", refresh: true };
-  }
+    const usedCharacterIds = getUsedCharacterIds(data.matchId);
+    if (usedCharacterIds.indexOf(String(data.characterId)) !== -1) {
+      return { error: "Personagem já foi banido ou escolhido", refresh: true };
+    }
 
-  getSheet("actions").appendRow([
-    data.matchId, data.playerId, data.type, data.characterId, match.phase, new Date().toISOString()
-  ]);
+    getSheet("actions").appendRow([
+      data.matchId, data.playerId, data.type, data.characterId, match.phase, new Date().toISOString()
+    ]);
 
-  const characters = sheetRows("characters");
-  const stillUsedIds = getUsedCharacterIds(data.matchId);
+    const characters = sheetRows("characters");
+    const stillUsedIds = getUsedCharacterIds(data.matchId);
 
-  if (stillUsedIds.length >= characters.length) {
-    transitionToCountdown(match);
-  } else {
-    advanceTurn(match);
-  }
+    if (stillUsedIds.length >= characters.length) {
+      transitionToCountdown(match);
+    } else {
+      advanceTurn(match);
+    }
 
-  return getMatchState(data.matchId);
+    return getMatchState(data.matchId);
+  });
 }
 
 function getUsedCharacterIds(matchId) {
@@ -597,31 +617,33 @@ function enrichCharacter(characterId, characters) {
    PLACAR (RODADAS)
 ========================= */
 function submitRoundScores(data) {
-  const match = getMatchRow(data.matchId);
-  if (!match) return { error: "Sala não encontrada" };
-  if (match.status !== "official") return { error: "A partida oficial não está em andamento" };
+  return withLock(() => {
+    const match = getMatchRow(data.matchId);
+    if (!match) return { error: "Sala não encontrada" };
+    if (match.status !== "official") return { error: "A partida oficial não está em andamento" };
 
-  let scores;
-  try {
-    scores = JSON.parse(data.scores);
-  } catch (err) {
-    return { error: "Pontuação inválida" };
-  }
+    let scores;
+    try {
+      scores = JSON.parse(data.scores);
+    } catch (err) {
+      return { error: "Pontuação inválida" };
+    }
 
-  const eligible = match.suddenDeath ? match.eligiblePlayerIds : match.playerIds;
-  const rounds = sheetRows("rounds").filter(r => String(r.matchId) === String(match.id));
-  const maxRound = rounds.reduce((m, r) => Math.max(m, Number(r.roundNumber)), 0);
-  const roundNumber = maxRound + 1;
-  const sheet = getSheet("rounds");
-  const now = new Date().toISOString();
+    const eligible = match.suddenDeath ? match.eligiblePlayerIds : match.playerIds;
+    const rounds = sheetRows("rounds").filter(r => String(r.matchId) === String(match.id));
+    const maxRound = rounds.reduce((m, r) => Math.max(m, Number(r.roundNumber)), 0);
+    const roundNumber = maxRound + 1;
+    const sheet = getSheet("rounds");
+    const now = new Date().toISOString();
 
-  eligible.forEach(pid => {
-    const pts = Number(scores[pid] || 0);
-    sheet.appendRow([match.id, roundNumber, pid, pts, now]);
+    eligible.forEach(pid => {
+      const pts = Number(scores[pid] || 0);
+      sheet.appendRow([match.id, roundNumber, pid, pts, now]);
+    });
+
+    evaluateMatchResult(match.id);
+    return getMatchState(match.id);
   });
-
-  evaluateMatchResult(match.id);
-  return getMatchState(match.id);
 }
 
 function evaluateMatchResult(matchId) {
