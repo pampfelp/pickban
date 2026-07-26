@@ -55,7 +55,7 @@ Se aparecer algo como `Exception: Você não tem permissão para chamar DriveApp
 
 ## 3. Rodar o app
 
-O app é 100% estático (`index.html`, `style.css`, `app.js`, `manifest.json`, `service-worker.js`, pasta `icons/`):
+O app é 100% estático — todos os arquivos ficam juntos, sem subpastas (`index.html`, `style.css`, `app.js`, `manifest.json`, `service-worker.js`, os ícones .png, etc.). Isso é proposital: uploads pela interface web do GitHub não preservam pastas ao arrastar arquivos soltos, então manter tudo "achatado" na raiz evita esse problema.
 
 - Abra `index.html` direto no navegador, ou
 - Suba a pasta em qualquer hospedagem estática (GitHub Pages, Netlify, Vercel) para jogar com amigos em dispositivos diferentes.
@@ -64,13 +64,13 @@ O app é 100% estático (`index.html`, `style.css`, `app.js`, `manifest.json`, `
 
 ### Trocar os ícones pela logo oficial
 
-Os ícones em `icons/` (favicon, apple-touch-icon, ícones do manifest) são um placeholder gerado automaticamente (monograma "SU"). Pra usar a logo oficial do Smash Up, salve a imagem em `icons/` nos tamanhos abaixo (mesmo nome de arquivo) e pronto — `index.html` e `manifest.json` já apontam pra esses arquivos:
+Os ícones (favicon, apple-touch-icon, ícones do manifest) ficam na raiz do projeto. Pra trocar, salve a imagem nos tamanhos abaixo (mesmo nome de arquivo, na raiz) e pronto — `index.html` e `manifest.json` já apontam pra esses arquivos:
 
-- `icons/favicon-16.png` (16×16)
-- `icons/favicon-32.png` (32×32)
-- `icons/apple-touch-icon.png` (180×180)
-- `icons/icon-192.png` (192×192)
-- `icons/icon-512.png` (512×512)
+- `favicon-16.png` (16×16)
+- `favicon-32.png` (32×32)
+- `apple-touch-icon.png` (180×180)
+- `icon-192.png` (192×192)
+- `icon-512.png` (512×512)
 
 ## Estrutura de dados na planilha
 
