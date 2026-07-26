@@ -32,6 +32,12 @@ function setup() {
     "turnTimerEnabled", "turnTimerSeconds", "turnDeadline", "countdownStartedAt",
     "winnerPlayerId", "suddenDeath", "eligiblePlayerIds"
   ]);
+  // Colunas com listas de IDs separadas por vírgula (ex: "123,456") precisam ser
+  // forçadas como texto puro. Sem isso, o Sheets pode "detectar" a célula como
+  // número em locais com vírgula decimal (ex: pt-BR) e corromper os IDs.
+  ss.getSheetByName("matches").getRange("F2:F").setNumberFormat("@");
+  ss.getSheetByName("matches").getRange("T2:T").setNumberFormat("@");
+
   resetSheet(ss, "actions", ["matchId", "playerId", "type", "characterId", "round", "timestamp"]);
   resetSheet(ss, "sessions", ["playerId", "lastSeen"]);
   resetSheet(ss, "rounds", ["matchId", "roundNumber", "playerId", "points", "timestamp"]);
