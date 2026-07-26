@@ -3,7 +3,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbzXogaLlQ0F_L7uGOKOJcxF
 
 const HEARTBEAT_INTERVAL_MS = 10000;
 const LOBBY_POLL_MS = 4000;
-const MATCH_POLL_MS = 3000;
+
+const MATCH_POLL_MS_BY_STATUS = {
+  waiting: 3000,
+  drafting: 1200,
+  countdown: 1000,
+  official: 2500,
+  finished: null // não faz mais polling
+};
 
 let state = {
   me: null, // { id, name, photo }
@@ -11,9 +18,17 @@ let state = {
   characters: [],
   rooms: [],
   matchId: localStorage.getItem("smashup_matchId") || null,
-  pollTimer: null,
+  currentTab: "lobby",
+  pollGeneration: 0,
+  lobbyPollTimeout: null,
+  matchPollTimeout: null,
   heartbeatTimer: null,
-  timerInterval: null,
+  draftTimerInterval: null,
+  turnTimerInterval: null,
+  countdownInterval: null,
+  officialTimerInterval: null,
+  actionInFlight: false,
+  lastMatch: null,
   pendingPhoto: {} // { login: {...}, character: {...}, player: {...} }
 };
 
@@ -55,6 +70,11 @@ function formatElapsed(startedAt) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
   const s = (seconds % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
+}
+
+function playerName(id) {
+  const p = state.players.find(pl => String(pl.id) === String(id));
+  return p ? p.name : "?";
 }
 
 /* =========================
@@ -220,7 +240,9 @@ function logout() {
   localStorage.removeItem("smashup_playerId");
   localStorage.removeItem("smashup_matchId");
   stopHeartbeatLoop();
-  stopPolling();
+  stopLobbyPolling();
+  stopMatchPolling();
+  clearAllTimers();
   state.me = null;
   state.matchId = null;
   document.getElementById("app").style.display = "none";
@@ -267,28 +289,25 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
 });
 
 function switchTab(tab) {
+  state.currentTab = tab;
+  state.pollGeneration++;
+
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === `tab-${tab}`));
 
-  stopPolling();
-  clearMatchTimer();
+  stopLobbyPolling();
+  stopMatchPolling();
+  clearAllTimers();
 
   if (tab === "lobby") {
-    refreshLobby();
-    state.pollTimer = setInterval(refreshLobby, LOBBY_POLL_MS);
+    scheduleLobbyPoll(0);
   } else if (tab === "game") {
-    refreshMatch();
-    state.pollTimer = setInterval(refreshMatch, MATCH_POLL_MS);
+    scheduleMatchPoll(0);
   } else if (tab === "characters") {
     renderCharacterList();
   } else if (tab === "players") {
     renderPlayerList();
   }
-}
-
-function stopPolling() {
-  if (state.pollTimer) clearInterval(state.pollTimer);
-  state.pollTimer = null;
 }
 
 /* =========================
@@ -324,8 +343,25 @@ async function init() {
 init();
 
 /* =========================
-   LOBBY
+   LOBBY (polling recursivo, sem sobreposição de chamadas)
 ========================= */
+function stopLobbyPolling() {
+  if (state.lobbyPollTimeout) clearTimeout(state.lobbyPollTimeout);
+  state.lobbyPollTimeout = null;
+}
+
+function scheduleLobbyPoll(delay) {
+  stopLobbyPolling();
+  const gen = state.pollGeneration;
+  state.lobbyPollTimeout = setTimeout(async () => {
+    if (gen !== state.pollGeneration || state.currentTab !== "lobby") return;
+    await refreshLobby();
+    if (gen === state.pollGeneration && state.currentTab === "lobby") {
+      scheduleLobbyPoll(LOBBY_POLL_MS);
+    }
+  }, delay);
+}
+
 async function refreshLobby() {
   try {
     await loadData();
@@ -350,16 +386,16 @@ function renderRoomList() {
 
   state.rooms.forEach(room => {
     const isMember = room.playerIds.map(String).includes(state.me.id);
-    const statusLabel = room.status === "waiting" ? "Aguardando início da partida" : "Partida iniciada";
+    const startedAt = room.officialStartedAt || room.draftStartedAt;
 
     const card = document.createElement("div");
     card.className = "room-card";
     card.innerHTML = `
       <div class="room-card-info">
         <span class="room-card-code">${escapeHtml(room.code)}</span>
-        <span class="status-badge ${room.status}">${statusLabel}</span>
-        <span class="room-card-meta">${room.playerCount}/6 jogadores — ${room.playerNames.map(escapeHtml).join(", ")}</span>
-        ${room.status === "in_progress" ? `<span class="room-card-meta">⏱ ${formatElapsed(room.startedAt)}</span>` : ""}
+        <span class="status-badge ${room.status}">${escapeHtml(room.statusLabel)}</span>
+        <span class="room-card-meta">${room.playerCount}/${room.maxPlayers} jogadores — ${room.playerNames.map(escapeHtml).join(", ")}</span>
+        ${startedAt ? `<span class="room-card-meta">⏱ ${formatElapsed(startedAt)}</span>` : ""}
       </div>
     `;
 
@@ -368,7 +404,7 @@ function renderRoomList() {
     if (isMember) {
       btn.textContent = "Ver sala";
       btn.addEventListener("click", () => enterRoom(room.matchId));
-    } else if (room.status === "waiting" && room.playerCount < 6) {
+    } else if (room.status === "waiting" && room.playerCount < room.maxPlayers) {
       btn.textContent = "Entrar";
       btn.addEventListener("click", () => joinRoomByCode(room.code));
     } else {
@@ -394,12 +430,30 @@ function renderOnlinePlayerList() {
   });
 }
 
-document.getElementById("createRoomBtn").addEventListener("click", async () => {
+/* ---- criar sala (editor de regras) ---- */
+document.getElementById("createRoomBtn").addEventListener("click", () => {
+  document.getElementById("createRoomForm").style.display = "block";
+});
+
+document.getElementById("cancelCreateRoomBtn").addEventListener("click", () => {
+  document.getElementById("createRoomForm").style.display = "none";
+});
+
+document.getElementById("confirmCreateRoomBtn").addEventListener("click", async () => {
+  const errorEl = document.getElementById("lobbyError");
+  errorEl.textContent = "";
   try {
-    const room = await api("createRoom", { hostPlayerId: state.me.id });
+    const room = await api("createRoom", {
+      hostPlayerId: state.me.id,
+      maxPlayers: document.getElementById("ruleMaxPlayers").value,
+      banCount: document.getElementById("ruleBanCount").value,
+      pickCount: document.getElementById("rulePickCount").value,
+      turnTimerEnabled: document.getElementById("ruleTurnTimer").checked
+    });
+    document.getElementById("createRoomForm").style.display = "none";
     enterRoom(room.matchId);
   } catch (err) {
-    document.getElementById("lobbyError").textContent = err.message;
+    errorEl.textContent = err.message;
   }
 });
 
@@ -429,11 +483,46 @@ function enterRoom(matchId) {
 }
 
 /* =========================
-   SALA (ESPERA + TABULEIRO)
+   FASES DO DRAFT (espelha o backend p/ UI otimista)
 ========================= */
-function clearMatchTimer() {
-  if (state.timerInterval) clearInterval(state.timerInterval);
-  state.timerInterval = null;
+function buildPhasesJS(banCount, pickCount) {
+  const phases = [];
+  let b = 0, p = 0;
+  while (b < banCount || p < pickCount) {
+    if (b < banCount) { phases.push("ban" + (b + 1)); b++; }
+    if (p < pickCount) { phases.push("pick" + (p + 1)); p++; }
+  }
+  return phases;
+}
+
+function phaseLabelForJS(phase) {
+  if (!phase) return "";
+  const m = String(phase).match(/^(ban|pick)(\d+)$/);
+  if (!m) return phase;
+  const type = m[1] === "ban" ? "Banimento" : "Escolha";
+  return `${m[2]}ª Rodada de ${type}`;
+}
+
+/* =========================
+   SALA: polling recursivo
+========================= */
+function stopMatchPolling() {
+  if (state.matchPollTimeout) clearTimeout(state.matchPollTimeout);
+  state.matchPollTimeout = null;
+}
+
+function scheduleMatchPoll(delay) {
+  stopMatchPolling();
+  const gen = state.pollGeneration;
+  state.matchPollTimeout = setTimeout(async () => {
+    if (gen !== state.pollGeneration || state.currentTab !== "game") return;
+    if (state.actionInFlight) { scheduleMatchPoll(400); return; }
+    await refreshMatch();
+    if (gen !== state.pollGeneration || state.currentTab !== "game") return;
+    const status = state.lastMatch ? state.lastMatch.status : "waiting";
+    const nextDelay = MATCH_POLL_MS_BY_STATUS[status];
+    if (nextDelay) scheduleMatchPoll(nextDelay);
+  }, delay);
 }
 
 async function refreshMatch() {
@@ -443,6 +532,7 @@ async function refreshMatch() {
   }
   try {
     const match = await api("getMatchState", { matchId: state.matchId });
+    state.lastMatch = match;
     renderMatch(match);
   } catch (err) {
     toast("Erro ao atualizar sala: " + err.message);
@@ -450,28 +540,55 @@ async function refreshMatch() {
   }
 }
 
+function clearAllTimers() {
+  [state.draftTimerInterval, state.turnTimerInterval, state.countdownInterval, state.officialTimerInterval]
+    .forEach(t => t && clearInterval(t));
+  state.draftTimerInterval = null;
+  state.turnTimerInterval = null;
+  state.countdownInterval = null;
+  state.officialTimerInterval = null;
+}
+
 function showNoMatch() {
+  ["noMatch", "waitingRoom", "draftBoard", "countdownScreen", "officialScreen", "finishedScreen"]
+    .forEach(id => document.getElementById(id).style.display = "none");
   document.getElementById("noMatch").style.display = "block";
-  document.getElementById("waitingRoom").style.display = "none";
-  document.getElementById("matchBoard").style.display = "none";
 }
 
 function renderMatch(match) {
-  document.getElementById("noMatch").style.display = "none";
+  clearAllTimers();
+  const screens = ["noMatch", "waitingRoom", "draftBoard", "countdownScreen", "officialScreen", "finishedScreen"];
+  screens.forEach(id => document.getElementById(id).style.display = "none");
 
   if (match.status === "waiting") {
     document.getElementById("waitingRoom").style.display = "block";
-    document.getElementById("matchBoard").style.display = "none";
     renderWaitingRoom(match);
-  } else {
-    document.getElementById("waitingRoom").style.display = "none";
-    document.getElementById("matchBoard").style.display = "block";
-    renderBoard(match);
+  } else if (match.status === "drafting") {
+    document.getElementById("draftBoard").style.display = "block";
+    renderDraftBoard(match);
+  } else if (match.status === "countdown") {
+    document.getElementById("countdownScreen").style.display = "block";
+    renderCountdownScreen(match);
+  } else if (match.status === "official") {
+    document.getElementById("officialScreen").style.display = "block";
+    renderOfficialScreen(match);
+  } else if (match.status === "finished") {
+    document.getElementById("finishedScreen").style.display = "block";
+    renderFinishedScreen(match);
   }
 }
 
+/* ---- sala de espera ---- */
 function renderWaitingRoom(match) {
   document.getElementById("roomCodeDisplay").textContent = match.code;
+
+  const recap = document.getElementById("waitingRules");
+  recap.innerHTML = `
+    <span>👥 ${match.rules.maxPlayers} jogadores</span>
+    <span>🚫 ${match.rules.banCount} banimento(s)</span>
+    <span>✅ ${match.rules.pickCount} escolha(s)</span>
+    <span>⏱ ${match.rules.turnTimerEnabled ? "Timer de 1min30s por turno" : "Sem timer por turno"}</span>
+  `;
 
   const list = document.getElementById("waitingPlayerList");
   list.innerHTML = "";
@@ -489,20 +606,22 @@ function renderWaitingRoom(match) {
   const isHost = String(match.hostPlayerId) === String(state.me.id);
   const startBtn = document.getElementById("startRoomBtn");
   const hint = document.getElementById("waitingHint");
+  const missing = match.rules.maxPlayers - match.playerIds.length;
 
   if (isHost) {
     startBtn.style.display = "inline-block";
-    startBtn.disabled = match.playerIds.length < 2;
-    hint.textContent = match.playerIds.length < 2 ? "Espere pelo menos mais 1 jogador entrar." : "";
+    startBtn.disabled = missing !== 0;
+    hint.textContent = missing > 0 ? `Faltam ${missing} jogador(es) para iniciar (a sala precisa de exatamente ${match.rules.maxPlayers}).` : "";
   } else {
     startBtn.style.display = "none";
-    hint.textContent = "Aguardando o host iniciar a partida...";
+    hint.textContent = missing > 0 ? `Aguardando mais ${missing} jogador(es) entrar...` : "Aguardando o host iniciar a partida...";
   }
 }
 
 document.getElementById("startRoomBtn").addEventListener("click", async () => {
   try {
     const match = await api("startRoom", { matchId: state.matchId, hostPlayerId: state.me.id });
+    state.lastMatch = match;
     renderMatch(match);
   } catch (err) {
     toast(err.message);
@@ -520,52 +639,69 @@ document.getElementById("leaveRoomBtn").addEventListener("click", async () => {
   switchTab("lobby");
 });
 
-function renderBoard(match) {
+/* ---- draft (ban/pick) ---- */
+function renderDraftBoard(match) {
   document.getElementById("phaseLabel").textContent = match.phaseLabel;
 
   const currentPlayer = match.results.find(r => String(r.playerId) === String(match.currentPlayerId));
   const turnLabel = document.getElementById("turnLabel");
-  const finishedBanner = document.getElementById("finishedBanner");
-  const grid = document.getElementById("characterGrid");
-  const heading = document.getElementById("charactersHeading");
+  const actionWord = match.phase && match.phase.indexOf("ban") === 0 ? "banir" : "escolher";
+  const isMyTurn = currentPlayer && String(match.currentPlayerId) === String(state.me.id);
+  turnLabel.textContent = currentPlayer
+    ? (isMyTurn ? `Sua vez de ${actionWord}!` : `Vez de ${currentPlayer.playerName} ${actionWord}`)
+    : "";
 
-  clearMatchTimer();
-  const timerEl = document.getElementById("matchTimer");
-  if (match.startedAt) {
-    timerEl.textContent = "⏱ " + formatElapsed(match.startedAt);
-    state.timerInterval = setInterval(() => {
-      timerEl.textContent = "⏱ " + formatElapsed(match.startedAt);
+  const draftTimerEl = document.getElementById("draftTimer");
+  if (match.draftStartedAt) {
+    draftTimerEl.textContent = "Draft: " + formatElapsed(match.draftStartedAt);
+    state.draftTimerInterval = setInterval(() => {
+      draftTimerEl.textContent = "Draft: " + formatElapsed(match.draftStartedAt);
     }, 1000);
   }
 
-  if (match.status === "finished") {
-    turnLabel.textContent = "";
-    finishedBanner.style.display = "block";
-    finishedBanner.textContent = `🏆 Partida finalizada! Tempo total: ${formatElapsed(match.startedAt)}`;
-    heading.style.display = "none";
-    grid.style.display = "none";
+  const turnTimerEl = document.getElementById("turnTimerDisplay");
+  if (match.rules.turnTimerEnabled && match.turnDeadline) {
+    turnTimerEl.style.display = "inline-block";
+    const tick = () => {
+      const secondsLeft = Math.max(0, Math.round((new Date(match.turnDeadline).getTime() - Date.now()) / 1000));
+      turnTimerEl.textContent = `⏳ ${secondsLeft}s`;
+      turnTimerEl.classList.toggle("urgent", secondsLeft <= 10);
+    };
+    tick();
+    state.turnTimerInterval = setInterval(tick, 1000);
   } else {
-    finishedBanner.style.display = "none";
-    heading.style.display = "block";
-    grid.style.display = "grid";
-    const actionWord = (match.phase === "ban1" || match.phase === "ban2") ? "banir" : "escolher";
-    turnLabel.textContent = currentPlayer ? `Vez de ${currentPlayer.playerName} ${actionWord}` : "";
+    turnTimerEl.style.display = "none";
   }
 
-  renderResultsRow(match);
-  renderCharacterGrid(match);
+  renderResultsRow(document.getElementById("resultsRow"), match, true);
+
+  const total = match.totalCharacters;
+  const availCount = match.availableCharacters.length;
+  const pickedCount = match.pickedCharacters.length;
+  const bannedCount = match.bannedCharacters.length;
+  document.getElementById("charCounts").innerHTML = `
+    <span>Total cadastrados: <b>${total}</b></span>
+    <span>Disponíveis: <b>${availCount}</b></span>
+    <span>Escolhidos: <b>${pickedCount}</b></span>
+    <span>Banidos: <b>${bannedCount}</b></span>
+  `;
+
+  renderAvailableGrid(match, isMyTurn, actionWord === "banir" ? "ban" : "pick");
+  renderOwnedGrid(document.getElementById("pickedGrid"), match.pickedCharacters);
+  renderOwnedGrid(document.getElementById("bannedGrid"), match.bannedCharacters);
+  document.getElementById("bannedGrid").classList.add("banned-grid");
 }
 
-function renderResultsRow(match) {
-  const row = document.getElementById("resultsRow");
-  row.innerHTML = "";
+function renderResultsRow(container, match, showLimits) {
+  container.innerHTML = "";
   match.results.forEach(r => {
     const card = document.createElement("div");
     card.className = "result-card" + (String(r.playerId) === String(match.currentPlayerId) ? " active-turn" : "");
 
     const header = document.createElement("div");
     header.className = "result-card-header";
-    header.innerHTML = `${avatarHtml({ name: r.playerName, photo: r.playerPhoto }, "sm")}<h4>${escapeHtml(r.playerName)}</h4>`;
+    const limitTxt = showLimits ? ` <span class="hint">(${r.bans.length}/${match.rules.banCount} ban, ${r.picks.length}/${match.rules.pickCount} pick)</span>` : "";
+    header.innerHTML = `${avatarHtml({ name: r.playerName, photo: r.playerPhoto }, "sm")}<h4>${escapeHtml(r.playerName)}${limitTxt}</h4>`;
     card.appendChild(header);
 
     r.bans.forEach(c => {
@@ -581,17 +717,13 @@ function renderResultsRow(match) {
       card.appendChild(line);
     });
 
-    row.appendChild(card);
+    container.appendChild(card);
   });
 }
 
-function renderCharacterGrid(match) {
-  const grid = document.getElementById("characterGrid");
+function renderAvailableGrid(match, isMyTurn, actionType) {
+  const grid = document.getElementById("availableGrid");
   grid.innerHTML = "";
-  if (match.status === "finished") return;
-
-  const actionType = (match.phase === "ban1" || match.phase === "ban2") ? "ban" : "pick";
-
   match.availableCharacters.forEach(c => {
     const card = document.createElement("div");
     card.className = "character-card";
@@ -599,34 +731,267 @@ function renderCharacterGrid(match) {
       <img src="${c.image || ''}" onerror="this.style.visibility='hidden'" alt="${escapeHtml(c.name)}">
       <div class="name">${escapeHtml(c.name)}</div>
     `;
-    card.addEventListener("click", () => confirmAction(match, c, actionType));
+    if (isMyTurn) {
+      card.addEventListener("click", () => confirmAction(match, c, actionType));
+    } else {
+      card.style.cursor = "default";
+    }
     grid.appendChild(card);
   });
 }
 
+function renderOwnedGrid(grid, list) {
+  grid.innerHTML = "";
+  list.forEach(c => {
+    const card = document.createElement("div");
+    card.className = "character-card";
+    card.innerHTML = `
+      <img src="${c.image || ''}" onerror="this.style.visibility='hidden'" alt="${escapeHtml(c.name)}">
+      <div class="name">${escapeHtml(c.name)}</div>
+      <div class="owner-tag">${escapeHtml(c.byPlayerName)}</div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+/* ---- ação otimista (banir/escolher) ---- */
+function buildOptimisticMatch(match, character, actionType) {
+  const clone = JSON.parse(JSON.stringify(match));
+  const me = state.me;
+
+  clone.availableCharacters = clone.availableCharacters.filter(c => String(c.id) !== String(character.id));
+  const entry = Object.assign({}, character, { byPlayerId: me.id, byPlayerName: me.name });
+  if (actionType === "ban") clone.bannedCharacters.push(entry);
+  else clone.pickedCharacters.push(entry);
+
+  const r = clone.results.find(res => String(res.playerId) === String(me.id));
+  if (r) {
+    if (actionType === "ban") r.bans.push(character);
+    else r.picks.push(character);
+  }
+
+  const phases = buildPhasesJS(clone.rules.banCount, clone.rules.pickCount);
+  const exhausted = clone.availableCharacters.length === 0;
+  let turnIndex = clone.turnIndex + 1;
+
+  const goToCountdown = () => {
+    clone.status = "countdown";
+    clone.countdownStartedAt = new Date().toISOString();
+    clone.currentPlayerId = null;
+    clone.turnDeadline = null;
+  };
+
+  if (exhausted) {
+    goToCountdown();
+  } else if (turnIndex >= clone.playerIds.length) {
+    turnIndex = 0;
+    const idx = phases.indexOf(clone.phase);
+    if (idx === phases.length - 1) {
+      goToCountdown();
+    } else {
+      clone.phase = phases[idx + 1];
+      clone.phaseLabel = phaseLabelForJS(clone.phase);
+      clone.turnIndex = turnIndex;
+      clone.currentPlayerId = clone.playerIds[turnIndex];
+      clone.turnDeadline = clone.rules.turnTimerEnabled
+        ? new Date(Date.now() + clone.rules.turnTimerSeconds * 1000).toISOString() : null;
+    }
+  } else {
+    clone.turnIndex = turnIndex;
+    clone.currentPlayerId = clone.playerIds[turnIndex];
+    clone.turnDeadline = clone.rules.turnTimerEnabled
+      ? new Date(Date.now() + clone.rules.turnTimerSeconds * 1000).toISOString() : null;
+  }
+
+  return clone;
+}
+
 async function confirmAction(match, character, actionType) {
-  const playerName = match.results.find(r => String(r.playerId) === String(match.currentPlayerId))?.playerName || "";
-  const verb = actionType === "ban" ? "banir" : "escolher";
-  const ok = confirm(`${playerName} vai ${verb} "${character.name}"?`);
-  if (!ok) return;
+  if (state.actionInFlight) return;
+  state.actionInFlight = true;
+
+  const optimistic = buildOptimisticMatch(match, character, actionType);
+  state.lastMatch = optimistic;
+  renderMatch(optimistic);
 
   try {
     const updated = await api("makeAction", {
       matchId: match.matchId,
-      playerId: match.currentPlayerId,
+      playerId: state.me.id,
       type: actionType,
       characterId: character.id
     });
+    state.lastMatch = updated;
+    renderMatch(updated);
+  } catch (err) {
+    toast(err.message);
+    await refreshMatch();
+  } finally {
+    state.actionInFlight = false;
+    if (state.currentTab === "game") scheduleMatchPoll(300);
+  }
+}
+
+/* ---- contagem regressiva ---- */
+function renderCountdownScreen(match) {
+  const isHost = String(match.hostPlayerId) === String(state.me.id);
+  document.getElementById("skipCountdownBtn").style.display = isHost ? "inline-block" : "none";
+
+  const numberEl = document.getElementById("countdownNumber");
+  const tick = () => {
+    const elapsed = Date.now() - new Date(match.countdownStartedAt).getTime();
+    const remaining = Math.max(0, Math.ceil((10000 - elapsed) / 1000));
+    numberEl.textContent = remaining;
+  };
+  tick();
+  state.countdownInterval = setInterval(tick, 200);
+}
+
+document.getElementById("skipCountdownBtn").addEventListener("click", async () => {
+  try {
+    const match = await api("skipCountdown", { matchId: state.matchId, hostPlayerId: state.me.id });
+    state.lastMatch = match;
+    renderMatch(match);
+  } catch (err) {
+    toast(err.message);
+  }
+});
+
+/* ---- partida oficial (placar) ---- */
+function renderOfficialScreen(match) {
+  const timerEl = document.getElementById("officialTimer");
+  if (match.officialStartedAt) {
+    timerEl.textContent = "Tempo de partida: " + formatElapsed(match.officialStartedAt);
+    state.officialTimerInterval = setInterval(() => {
+      timerEl.textContent = "Tempo de partida: " + formatElapsed(match.officialStartedAt);
+    }, 1000);
+  }
+
+  const suddenBanner = document.getElementById("suddenDeathBanner");
+  if (match.suddenDeath) {
+    const names = match.eligiblePlayerIds.map(playerName).join(", ");
+    suddenBanner.style.display = "block";
+    suddenBanner.textContent = `⚔️ Empate em ${WIN_SCORE_JS}+ pontos! Modo decisivo entre: ${names} — quem fizer mais pontos na próxima rodada vence.`;
+  } else {
+    suddenBanner.style.display = "none";
+  }
+
+  renderScoreBoard(document.getElementById("scoreBoard"), match);
+  renderRoundForm(match);
+  renderRoundHistory(document.getElementById("roundHistory"), match);
+}
+
+const WIN_SCORE_JS = 15;
+
+function renderScoreBoard(container, match) {
+  container.innerHTML = "";
+  const entries = match.playerIds.map(pid => ({ pid, score: match.scores[pid] || 0 }));
+  const max = Math.max(0, ...entries.map(e => e.score));
+
+  entries.sort((a, b) => b.score - a.score);
+  entries.forEach(e => {
+    const player = match.results.find(r => String(r.playerId) === String(e.pid));
+    const card = document.createElement("div");
+    card.className = "score-card" + (e.score === max && max > 0 ? " leader" : "");
+    card.innerHTML = `
+      ${avatarHtml({ name: player ? player.playerName : "?", photo: player ? player.playerPhoto : "" }, "md")}
+      <div>${escapeHtml(player ? player.playerName : "?")}</div>
+      <div class="score-value">${e.score}</div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function renderRoundForm(match) {
+  const eligible = match.scoreEligiblePlayerIds;
+  const container = document.getElementById("roundInputs");
+  container.innerHTML = "";
+  eligible.forEach(pid => {
+    const player = match.results.find(r => String(r.playerId) === String(pid));
+    const item = document.createElement("div");
+    item.className = "round-input-item";
+    item.innerHTML = `
+      <span>${escapeHtml(player ? player.playerName : "?")}</span>
+      <input type="number" min="0" step="1" value="0" data-player-id="${pid}">
+    `;
+    container.appendChild(item);
+  });
+}
+
+document.getElementById("roundForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const inputs = document.querySelectorAll("#roundInputs input");
+  const scores = {};
+  inputs.forEach(input => { scores[input.dataset.playerId] = Number(input.value) || 0; });
+
+  try {
+    const updated = await api("submitRoundScores", { matchId: state.matchId, scores: JSON.stringify(scores) });
+    state.lastMatch = updated;
+    renderMatch(updated);
+    toast("Rodada registrada!");
+  } catch (err) {
+    toast(err.message);
+  }
+});
+
+function renderRoundHistory(container, match) {
+  if (match.roundHistory.length === 0) {
+    container.innerHTML = `<p class="hint">Nenhuma rodada registrada ainda.</p>`;
+    return;
+  }
+
+  const headerCells = match.playerIds.map(pid => `<th>${escapeHtml(playerNameIn(match, pid))}</th>`).join("");
+  const rows = match.roundHistory.map(round => {
+    const cells = match.playerIds.map(pid => {
+      const entry = round.entries.find(e => String(e.playerId) === String(pid));
+      return `<td>${entry ? entry.points : "—"}</td>`;
+    }).join("");
+    return `<tr><td>Rodada ${round.roundNumber}</td>${cells}</tr>`;
+  }).join("");
+
+  const totalCells = match.playerIds.map(pid => `<td><b>${match.scores[pid] || 0}</b></td>`).join("");
+
+  container.innerHTML = `
+    <table>
+      <thead><tr><th></th>${headerCells}</tr></thead>
+      <tbody>${rows}<tr><td>Total</td>${totalCells}</tr></tbody>
+    </table>
+  `;
+}
+
+function playerNameIn(match, pid) {
+  const r = match.results.find(res => String(res.playerId) === String(pid));
+  return r ? r.playerName : "?";
+}
+
+document.getElementById("finishMatchBtn").addEventListener("click", async () => {
+  if (!confirm("Finalizar a partida agora? Isso encerra a partida com o placar atual.")) return;
+  try {
+    const updated = await api("finishMatchManually", { matchId: state.matchId });
+    state.lastMatch = updated;
     renderMatch(updated);
   } catch (err) {
     toast(err.message);
   }
+});
+
+/* ---- resultado final ---- */
+function renderFinishedScreen(match) {
+  const banner = document.getElementById("winnerBanner");
+  if (match.winnerPlayerId) {
+    banner.textContent = `🏆 ${playerNameIn(match, match.winnerPlayerId)} venceu a partida!`;
+  } else {
+    banner.textContent = "🤝 Partida encerrada sem um vencedor único (empate).";
+  }
+
+  renderScoreBoard(document.getElementById("finalScoreBoard"), match);
+  renderRoundHistory(document.getElementById("finalRoundHistory"), match);
+  renderResultsRow(document.getElementById("finalResultsRow"), match, true);
 }
 
-document.getElementById("newMatchBtn").addEventListener("click", () => {
+document.getElementById("backToLobbyBtn").addEventListener("click", () => {
   state.matchId = null;
   localStorage.removeItem("smashup_matchId");
-  clearMatchTimer();
   switchTab("lobby");
 });
 

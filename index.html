@@ -57,6 +57,36 @@
       </div>
       <p id="lobbyError" class="error"></p>
 
+      <!-- EDITOR DE REGRAS -->
+      <div id="createRoomForm" class="rules-form" style="display:none;">
+        <h3>Regras da sala</h3>
+        <div class="rules-grid">
+          <label>Número de jogadores (exato)
+            <select id="ruleMaxPlayers">
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4" selected>4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+            </select>
+          </label>
+          <label>Quantidade de bans (por jogador)
+            <input type="number" id="ruleBanCount" min="1" max="10" value="2">
+          </label>
+          <label>Quantidade de picks (por jogador)
+            <input type="number" id="rulePickCount" min="1" max="10" value="2">
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="ruleTurnTimer" checked>
+            Timer de 1min30s por turno (se o tempo acabar, o jogador perde a vez)
+          </label>
+        </div>
+        <div class="rules-actions">
+          <button id="confirmCreateRoomBtn" class="primary-btn">Criar sala</button>
+          <button id="cancelCreateRoomBtn" class="secondary-btn">Cancelar</button>
+        </div>
+      </div>
+
       <h3>Salas</h3>
       <div id="roomList" class="room-list"></div>
 
@@ -76,6 +106,7 @@
           <span>Código da sala</span>
           <strong id="roomCodeDisplay"></strong>
         </div>
+        <div id="waitingRules" class="rules-recap"></div>
         <h3>Jogadores na sala</h3>
         <div id="waitingPlayerList" class="waiting-player-list"></div>
         <button id="startRoomBtn" class="primary-btn" style="display:none;">Iniciar Partida</button>
@@ -83,22 +114,76 @@
         <button id="leaveRoomBtn" class="secondary-btn">Sair da sala</button>
       </div>
 
-      <!-- TABULEIRO -->
-      <div id="matchBoard" style="display:none;">
+      <!-- DRAFT (BAN/PICK) -->
+      <div id="draftBoard" style="display:none;">
         <div class="phase-banner">
-          <span id="phaseLabel"></span>
-          <span id="matchTimer" class="match-timer"></span>
-          <span id="turnLabel" class="turn-label"></span>
+          <div>
+            <span id="phaseLabel"></span>
+            <span id="turnLabel" class="turn-label"></span>
+          </div>
+          <div class="timers">
+            <span id="draftTimer" class="match-timer" title="Tempo geral do draft"></span>
+            <span id="turnTimerDisplay" class="turn-timer" style="display:none;"></span>
+          </div>
         </div>
 
         <div class="results-row" id="resultsRow"></div>
 
-        <h3 id="charactersHeading">Personagens disponíveis</h3>
-        <div id="characterGrid" class="character-grid"></div>
+        <div class="char-counts" id="charCounts"></div>
 
-        <div id="finishedBanner" class="finished-banner" style="display:none;"></div>
+        <h3>Disponíveis</h3>
+        <div id="availableGrid" class="character-grid"></div>
 
-        <button id="newMatchBtn" class="secondary-btn">Voltar ao lobby</button>
+        <h3>Escolhidos</h3>
+        <div id="pickedGrid" class="character-grid dim-grid"></div>
+
+        <h3>Banidos</h3>
+        <div id="bannedGrid" class="character-grid dim-grid"></div>
+      </div>
+
+      <!-- CONTAGEM REGRESSIVA -->
+      <div id="countdownScreen" style="display:none;">
+        <div class="countdown-box">
+          <p>Draft finalizado! A partida oficial começa em</p>
+          <div id="countdownNumber" class="countdown-number">10</div>
+          <button id="skipCountdownBtn" class="secondary-btn" style="display:none;">Pular contagem e iniciar agora</button>
+        </div>
+      </div>
+
+      <!-- PARTIDA OFICIAL -->
+      <div id="officialScreen" style="display:none;">
+        <div class="phase-banner">
+          <span>Partida oficial em andamento</span>
+          <span id="officialTimer" class="match-timer" title="Tempo de partida"></span>
+        </div>
+
+        <div id="suddenDeathBanner" class="sudden-death-banner" style="display:none;"></div>
+
+        <h3>Placar</h3>
+        <div id="scoreBoard" class="score-board"></div>
+
+        <h3>Registrar rodada</h3>
+        <form id="roundForm" class="round-form">
+          <div id="roundInputs" class="round-inputs"></div>
+          <button type="submit" class="primary-btn">Registrar Rodada</button>
+        </form>
+
+        <h3>Histórico de rodadas</h3>
+        <div id="roundHistory" class="round-history"></div>
+
+        <button id="finishMatchBtn" class="secondary-btn">Finalizar Partida</button>
+      </div>
+
+      <!-- RESULTADO FINAL -->
+      <div id="finishedScreen" style="display:none;">
+        <div id="winnerBanner" class="finished-banner"></div>
+        <h3>Placar final</h3>
+        <div id="finalScoreBoard" class="score-board"></div>
+        <h3>Histórico de rodadas</h3>
+        <div id="finalRoundHistory" class="round-history"></div>
+        <h3>Draft</h3>
+        <div class="results-row" id="finalResultsRow"></div>
+        <button id="backToLobbyBtn" class="secondary-btn">Voltar ao lobby</button>
       </div>
     </section>
 
