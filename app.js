@@ -2,13 +2,13 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbzXogaLlQ0F_L7uGOKOJcxFIJx-ssx7Lj0DVCPCynPHD549snVT6DhH9qm7Sl1AjCq7ng/exec";
 
 const HEARTBEAT_INTERVAL_MS = 10000;
-const LOBBY_POLL_MS = 4000;
+const LOBBY_POLL_MS = 3000;
 
 const MATCH_POLL_MS_BY_STATUS = {
-  waiting: 3000,
-  drafting: 1200,
-  countdown: 1000,
-  official: 2500,
+  waiting: 2000,
+  drafting: 700,
+  countdown: 600,
+  official: 1500,
   finished: null // não faz mais polling
 };
 
@@ -91,8 +91,11 @@ function playerName(id) {
 async function api(action, params = {}) {
   const url = new URL(API_URL);
   url.searchParams.set("action", action);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString());
+  url.searchParams.set("_t", Date.now().toString(36)); // evita resposta cacheada em GET repetido (polling)
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) url.searchParams.set(k, v);
+  });
+  const res = await fetch(url.toString(), { cache: "no-store" });
   const data = await res.json();
   if (data && data.error) throw new Error(data.error);
   return data;
@@ -102,6 +105,7 @@ async function api(action, params = {}) {
 async function apiPost(body) {
   const res = await fetch(API_URL, {
     method: "POST",
+    cache: "no-store",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(body)
   });

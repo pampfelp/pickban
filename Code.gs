@@ -67,6 +67,7 @@ function resetSheet(ss, name, headers) {
 function doGet(e) {
   const action = e.parameter.action;
 
+  _resetRequestCache();
   try {
     switch (action) {
       case "getData":
@@ -127,6 +128,7 @@ function doGet(e) {
    API PRINCIPAL (POST) — usado só para upload de foto (payload grande em base64)
 ========================= */
 function doPost(e) {
+  _resetRequestCache();
   try {
     const body = JSON.parse(e.postData.contents);
 
@@ -164,18 +166,94 @@ function json(data) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// Cache dentro de uma única requisição (doGet/doPost): evita reabrir a planilha e
+// reler a mesma aba várias vezes numa mesma chamada (ex: getMatchState lê "actions",
+// "players", "characters" e "rounds" — sem isso, cada uma dessas é uma leitura cheia
+// da aba inteira, e algumas funções chamam a mesma aba 2-3x na mesma requisição).
+var _requestCache = null;
+
+function _resetRequestCache() {
+  _requestCache = { ss: null, sheets: {}, rows: {} };
+}
+
+function _getSpreadsheet() {
+  if (!_requestCache) return SpreadsheetApp.openById(SHEET_ID);
+  if (!_requestCache.ss) _requestCache.ss = SpreadsheetApp.openById(SHEET_ID);
+  return _requestCache.ss;
+}
+
 function getSheet(name) {
-  return SpreadsheetApp.openById(SHEET_ID).getSheetByName(name);
+  if (!_requestCache) return _getSpreadsheet().getSheetByName(name);
+  if (!_requestCache.sheets[name]) {
+    _requestCache.sheets[name] = _getSpreadsheet().getSheetByName(name);
+  }
+  return _requestCache.sheets[name];
 }
 
 function sheetRows(name) {
+  if (_requestCache && _requestCache.rows[name]) return _requestCache.rows[name];
+
   const values = getSheet(name).getDataRange().getValues();
   const headers = values[0];
-  return values.slice(1).map(row => {
+  const rows = values.slice(1).map(row => {
     const obj = {};
     headers.forEach((h, i) => { if (h) obj[h] = row[i]; });
     return obj;
   });
+
+  if (_requestCache) _requestCache.rows[name] = rows;
+  return rows;
+}
+
+// Chame depois de appendRow/setValue/deleteRow numa aba que já foi lida via sheetRows()
+// nesta mesma requisição, se o código a seguir precisar enxergar a mudança.
+function _invalidateRows(name) {
+  if (_requestCache) delete _requestCache.rows[name];
+}
+
+// Cache ENTRE requisições (CacheService), só para abas que mudam pouco (players,
+// characters — cadastro editorial, não o estado da partida). Toda leitura de outros
+// jogadores/dispositivos passa a pegar carona nesse cache em vez de reler a aba do
+// zero. TTL curto o bastante pra edições aparecerem rápido; invalidado na hora em
+// qualquer add/update/delete, então nunca fica "preso" desatualizado por muito tempo.
+var CACHEABLE_SHEETS = { players: 30, characters: 60 };
+
+function sheetRowsCached(name) {
+  if (_requestCache && _requestCache.rows[name]) return _requestCache.rows[name];
+
+  const ttl = CACHEABLE_SHEETS[name];
+  if (ttl) {
+    try {
+      const cached = CacheService.getScriptCache().get("rows_" + name);
+      if (cached) {
+        const rows = JSON.parse(cached);
+        if (_requestCache) _requestCache.rows[name] = rows;
+        return rows;
+      }
+    } catch (err) {
+      // CacheService indisponível/instável — ignora e lê a aba normalmente abaixo.
+    }
+  }
+
+  const rows = sheetRows(name);
+
+  if (ttl) {
+    try {
+      CacheService.getScriptCache().put("rows_" + name, JSON.stringify(rows), ttl);
+    } catch (err) {
+      // linha grande demais pro limite do CacheService (~100KB), ou serviço
+      // indisponível — segue sem cache, sem quebrar a leitura em si.
+    }
+  }
+
+  return rows;
+}
+
+function invalidateCachedRows(name) {
+  _invalidateRows(name);
+  if (CACHEABLE_SHEETS[name]) {
+    try { CacheService.getScriptCache().remove("rows_" + name); } catch (err) {}
+  }
 }
 
 function findRowIndexById(sheet, id, col) {
@@ -231,6 +309,7 @@ function addPlayer(data) {
   const sheet = getSheet("players");
   const id = new Date().getTime();
   sheet.appendRow([id, data.name, data.photo || "", data.photoFileId || "", new Date().toISOString()]);
+  invalidateCachedRows("players");
   return { success: true, id };
 }
 
@@ -241,6 +320,7 @@ function updatePlayer(data) {
   if (data.name !== undefined) sheet.getRange(row, 2).setValue(data.name);
   if (data.photo !== undefined) sheet.getRange(row, 3).setValue(data.photo);
   if (data.photoFileId !== undefined) sheet.getRange(row, 4).setValue(data.photoFileId);
+  invalidateCachedRows("players");
   return { success: true };
 }
 
@@ -249,6 +329,7 @@ function deletePlayer(data) {
   const row = findRowIndexById(sheet, data.id);
   if (row === -1) return { error: "Jogador não encontrado" };
   sheet.deleteRow(row);
+  invalidateCachedRows("players");
   return { success: true };
 }
 
@@ -283,6 +364,7 @@ function addCharacter(data) {
   const sheet = getSheet("characters");
   const id = new Date().getTime();
   sheet.appendRow([id, data.name, data.image || "", data.imageFileId || ""]);
+  invalidateCachedRows("characters");
   return { success: true, id };
 }
 
@@ -293,6 +375,7 @@ function updateCharacter(data) {
   if (data.name !== undefined) sheet.getRange(row, 2).setValue(data.name);
   if (data.image !== undefined) sheet.getRange(row, 3).setValue(data.image);
   if (data.imageFileId !== undefined) sheet.getRange(row, 4).setValue(data.imageFileId);
+  invalidateCachedRows("characters");
   return { success: true };
 }
 
@@ -301,6 +384,7 @@ function deleteCharacter(data) {
   const row = findRowIndexById(sheet, data.id);
   if (row === -1) return { error: "Personagem não encontrado" };
   sheet.deleteRow(row);
+  invalidateCachedRows("characters");
   return { success: true };
 }
 
@@ -514,6 +598,7 @@ function maybeProcessTimeouts(match) {
          new Date(match.turnDeadline).getTime() < Date.now() && safety < 100) {
     const currentPlayerId = match.playerIds[match.turnIndex];
     getSheet("actions").appendRow([match.id, currentPlayerId, "timeout", "", match.phase, new Date().toISOString()]);
+    _invalidateRows("actions");
     advanceTurn(match);
     match = getMatchRow(match.id);
     safety++;
@@ -566,8 +651,9 @@ function makeAction(data) {
     getSheet("actions").appendRow([
       data.matchId, data.playerId, data.type, data.characterId, match.phase, new Date().toISOString()
     ]);
+    _invalidateRows("actions");
 
-    const characters = sheetRows("characters");
+    const characters = sheetRowsCached("characters");
     const stillUsedIds = getUsedCharacterIds(data.matchId);
 
     if (stillUsedIds.length >= characters.length) {
@@ -649,6 +735,7 @@ function submitRoundScores(data) {
       const pts = Number(scores[pid] || 0);
       sheet.appendRow([match.id, roundNumber, pid, pts, now]);
     });
+    _invalidateRows("rounds");
 
     evaluateMatchResult(match.id);
     return getMatchState(match.id);
@@ -737,8 +824,8 @@ function getMatchState(matchId) {
   match = maybeAdvanceCountdown(match);
 
   const actions = sheetRows("actions").filter(a => String(a.matchId) === String(matchId));
-  const players = sheetRows("players");
-  const characters = sheetRows("characters");
+  const players = sheetRowsCached("players");
+  const characters = sheetRowsCached("characters");
   const onlineIds = getOnlinePlayerIds();
   const rounds = sheetRows("rounds").filter(r => String(r.matchId) === String(matchId));
 
@@ -834,8 +921,7 @@ function getMatchState(matchId) {
     suddenDeath: match.suddenDeath,
     eligiblePlayerIds: match.eligiblePlayerIds,
     scoreEligiblePlayerIds,
-    winnerPlayerId: match.winnerPlayerId,
-    actions
+    winnerPlayerId: match.winnerPlayerId
   };
 }
 
@@ -854,8 +940,8 @@ function getMatchHistory() {
    DADOS GERAIS (players + characters + salas + status online)
 ========================= */
 function getAllData() {
-  const players = sheetRows("players");
-  const characters = sheetRows("characters");
+  const players = sheetRowsCached("players");
+  const characters = sheetRowsCached("characters");
   const onlineIds = getOnlinePlayerIds();
   const matches = sheetRows("matches");
 
