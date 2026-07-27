@@ -1,0 +1,56 @@
+rules_version = '2';
+
+// Sem Cloud Functions e sem Firebase Auth (login do app é só "escolher perfil",
+// sem senha) — essas regras validam FORMATO dos dados, não identidade de quem
+// escreve. A garantia de "só posso agir na minha vez" fica no app.js.
+// Ação/rodada são só-de-criação (nunca update/delete) pra manter o histórico
+// íntegro mesmo sem autenticação de verdade.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isNonEmptyString(v, maxLen) {
+      return v is string && v.size() > 0 && v.size() < maxLen;
+    }
+
+    match /players/{playerId} {
+      allow read: if true;
+      allow create, update: if isNonEmptyString(request.resource.data.name, 60);
+      allow delete: if true;
+    }
+
+    match /characters/{characterId} {
+      allow read: if true;
+      allow create, update: if isNonEmptyString(request.resource.data.name, 80);
+      allow delete: if true;
+    }
+
+    match /sessions/{playerId} {
+      allow read: if true;
+      allow write: if request.resource.data.lastSeen is number;
+    }
+
+    match /rooms/{roomId} {
+      allow read: if true;
+      allow create: if isNonEmptyString(request.resource.data.code, 10) &&
+                       isNonEmptyString(request.resource.data.status, 20) &&
+                       request.resource.data.playerIds is list;
+      allow update: if isNonEmptyString(request.resource.data.status, 20) &&
+                       request.resource.data.playerIds is list;
+      allow delete: if true;
+
+      match /actions/{actionId} {
+        allow read: if true;
+        allow create: if isNonEmptyString(request.resource.data.playerId, 40) &&
+                         isNonEmptyString(request.resource.data.type, 20);
+        allow update, delete: if false;
+      }
+
+      match /rounds/{roundId} {
+        allow read: if true;
+        allow create: if isNonEmptyString(request.resource.data.playerId, 40) &&
+                         request.resource.data.points is number;
+        allow update, delete: if false;
+      }
+    }
+  }
+}

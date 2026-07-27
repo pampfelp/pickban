@@ -1,9 +1,10 @@
-const CACHE_NAME = "smashup-pickban-v2";
+const CACHE_NAME = "smashup-pickban-v4";
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./style.css",
   "./app.js",
+  "./firebase-init.js",
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
@@ -27,10 +28,12 @@ self.addEventListener("activate", (event) => {
 });
 
 // Estratégia: network-first com fallback pro cache (pro app abrir mesmo offline/instável),
-// mas nunca cachear chamadas à API do Apps Script — precisam sempre de dados frescos.
+// mas nunca cachear chamadas ao Firestore (precisa sempre de dados frescos; usa conexões
+// de streaming de longa duração, que não fazem sentido passar pelo cache HTTP) nem ao
+// Apps Script (upload de foto pro Drive).
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  if (url.hostname.includes("script.google.com")) return;
+  if (url.hostname.endsWith("googleapis.com") || url.hostname.includes("script.google.com")) return;
   if (event.request.method !== "GET") return;
 
   event.respondWith(

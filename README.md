@@ -1,70 +1,75 @@
 # Smash Up — Pick & Ban
 
-App de pick/ban para Smash Up, com Google Sheets + Apps Script como backend e fotos guardadas no Google Drive.
+App de pick/ban para Smash Up. Frontend estático (HTML/CSS/JS puro, sem
+framework) hospedado no GitHub Pages, com **Cloud Firestore** (Firebase) como
+banco de dados em tempo real, e **Google Drive** (via um Apps Script mínimo)
+guardando as fotos — o Firebase Storage passou a exigir plano pago mesmo
+dentro da cota gratuita, então as fotos ficaram de fora do Firebase.
 
 ## Funcionalidades
 
 - **Login simples por perfil**: escolha seu nome numa lista ou crie um perfil novo (com foto opcional). Sem senha.
-- **Avatar**: se o perfil (jogador ou personagem) tem foto, mostra a foto; senão mostra um círculo com as iniciais (1ª letra do primeiro nome + 1ª letra do segundo nome, se houver).
-- **Upload de foto direto do dispositivo**: ao enviar uma foto (jogador ou personagem), ela é redimensionada no navegador e enviada para uma pasta no Google Drive (`SmashUpPickBan_Photos`), que retorna um link público usado como imagem no app.
-- **UI otimista / atualização em segundo plano**: ao banir ou escolher um personagem, a tela atualiza na hora (sem esperar o servidor) e a chamada real acontece em paralelo; se o servidor discordar (ex: alguém foi mais rápido), a tela se corrige sozinha. Durante o draft, a sala sincroniza a cada ~1,2s; na contagem regressiva, a cada 1s; na partida oficial, a cada ~2,5s.
-- **Editor de regras ao criar sala**: número de jogadores (exato, 2 a 6), quantidade de banimentos por jogador, quantidade de escolhas por jogador, e se o timer de turno está ativo.
-- **Timer por turno (opcional)**: cada jogador tem 1min30s para banir ou escolher; se o tempo acabar, a vez passa para o próximo jogador e essa oportunidade de ban/pick é perdida. É verificado automaticamente (não precisa ninguém estar com a tela aberta — qualquer jogador que atualizar a sala "destrava" turnos vencidos).
-- **Contadores de tempo separados**: um cronômetro para o draft (banimento/escolha) e outro, independente, para a partida oficial (só começa quando o draft termina).
-- **Personagens por categoria**: contagem de quantos estão cadastrados, disponíveis, escolhidos e banidos, com três listas separadas (Disponíveis / Escolhidos / Banidos).
-- **Transição automática para a partida oficial**: quando os personagens acabam ou todos os jogadores atingem o limite de bans/picks, roda uma contagem regressiva de 10s (o host pode pular) e a sala vira a tela de "Partida oficial".
-- **Placar por rodadas**: a cada rodada, os jogadores registram os pontos que fizeram. Quem chegar a 15+ pontos (sem empate no topo) vence e a partida encerra sozinha. Em caso de empate no topo com 15+, entra em modo decisivo só entre os empatados — na rodada seguinte, quem pontuar mais entre eles vence.
-- **Botão de finalizar partida**: encerra manualmente a qualquer momento, mostrando o histórico completo e quem venceu (ou empate, se não houver um vencedor claro).
-- **Lobby**: lista de salas com status, contagem de jogadores e tempo decorrido. Mostra todos os jogadores cadastrados com bolinha verde/cinza de online/offline.
-- **Entrar por código**: cada sala tem um código de 5 caracteres.
-- **Excluir sala**: ícone de lixeira em cada card de sala no Lobby, com confirmação.
-- **Presença online/offline**: heartbeat a cada 10s; considerado offline depois de ~25s sem heartbeat.
-- **App instalável (PWA)**: banner de "Instalar app" aparece automaticamente (desktop/Android via prompt nativo do navegador; iOS com instrução de "Compartilhar → Adicionar à Tela de Início", já que a Apple não permite instalar programaticamente). Funciona offline para o "casco" do app (tela/estilos), mas sempre busca dados frescos da planilha.
+- **Avatar**: se o perfil (jogador ou personagem) tem foto, mostra a foto; senão mostra um círculo com as iniciais.
+- **Upload de foto direto do dispositivo**: redimensionada no navegador e enviada pro Google Drive.
+- **Tempo real de verdade**: banir/escolher, entrar numa sala, registrar rodada — tudo aparece pros outros jogadores quase instantaneamente, via `onSnapshot` do Firestore. Sem polling, sem espera.
+- **UI otimista**: sua própria ação aparece na tela na hora, antes mesmo da confirmação do servidor.
+- **Editor de regras ao criar sala**: número de jogadores (exato, 2 a 6), quantidade de banimentos, quantidade de escolhas, e se o timer de turno está ativo.
+- **Timer por turno (opcional)**: 1min30s pra banir/escolher; se o tempo acabar, a vez passa pro próximo e a oportunidade é perdida. Verificado por qualquer cliente com a sala aberta (transação do Firestore evita duplicidade).
+- **Contadores de tempo separados**: cronômetro do draft e cronômetro da partida oficial, independentes.
+- **Personagens por categoria**: Disponíveis / Escolhidos / Banidos, com contagem.
+- **Transição automática pra partida oficial**: contagem regressiva de 10s quando os personagens acabam ou todos atingem o limite de bans/picks.
+- **Placar por rodadas**: primeiro a 15+ pontos (sem empate no topo) vence; empate no topo entra em modo decisivo só entre os empatados.
+- **Histórico de partidas**: todas as partidas finalizadas, com draft e rodadas completos.
+- **Lobby**: salas com status, jogadores, tempo decorrido; presença online/offline.
+- **App instalável (PWA)**.
 
 ## Fluxo completo de uma sala
 
 1. **Aguardando início**: host cria a sala com as regras; jogadores entram por código ou pela lista do lobby até bater o número exato definido. Host aperta "Iniciar Partida".
-2. **Draft**: jogadores se revezam banindo e escolhendo personagens, na ordem em que entraram na sala, alternando banimento/escolha conforme as quantidades configuradas (ex: banCount=2, pickCount=2 → ban, pick, ban, pick).
+2. **Draft**: jogadores se revezam banindo e escolhendo personagens, alternando conforme as quantidades configuradas.
 3. **Contagem regressiva (10s)**: dispara quando os personagens acabam ou todo mundo atinge o limite de bans/picks.
-4. **Partida oficial**: cronômetro próprio; jogadores registram pontos rodada a rodada até alguém bater 15 (com as regras de empate/desempate acima), ou até o host finalizar manualmente.
-5. **Resultado final**: vencedor (ou empate), placar final e histórico completo de rodadas e do draft.
+4. **Partida oficial**: cronômetro próprio; jogadores registram pontos rodada a rodada até alguém bater 15, ou até o host finalizar manualmente.
+5. **Resultado final**: vencedor (ou empate), placar final e histórico completo.
 
-## 1. Configurar o Apps Script
+## 1. Criar o projeto Firebase
 
-1. Abra a planilha: https://docs.google.com/spreadsheets/d/1_E1PQCSlPZtxh2CsvwkLn2KYZD6vztbaa_aXHkpaO1g/edit
+1. Acesse o [console do Firebase](https://console.firebase.google.com) e crie um projeto novo (gratuito, plano Spark).
+2. Ative o **Firestore**: menu lateral → "Bancos de dados e armazenamento" → **Firestore** → **Criar banco de dados** → escolha uma região (ex: `southamerica-east1`) → **modo de produção**.
+   - (Não precisa ativar o **Storage** — as fotos vão pro Google Drive, não pro Firebase.)
+3. Publique as regras de segurança do Firestore: **Firestore Database → Regras** → apague o conteúdo → cole o de [`firestore.rules`](firestore.rules) deste projeto → **Publicar**.
+4. Registre um app Web: ícone de engrenagem → **Configurações do projeto** → role até "Seus apps" → ícone `</>` (Web) → dê um nome → **não** marque Firebase Hosting → **Registrar app**. Copie o bloco `firebaseConfig = {...}` que aparece.
+5. Abra [`firebase-init.js`](firebase-init.js) neste projeto e substitua os valores `"SUBSTITUA_AQUI"` pelos que você copiou.
+
+Essas chaves (`apiKey`, `projectId` etc.) são **públicas por design** no Firebase Web — pode subir pro GitHub sem problema. A segurança de verdade vem das regras do Firestore (passo 3), não de esconder essa config.
+
+## 2. Configurar o Apps Script (só pras fotos)
+
+1. Abra a planilha antiga (ou crie uma nova em branco, não importa mais o conteúdo — só serve de "casa" pro script): [link da planilha](https://docs.google.com/spreadsheets/d/1_E1PQCSlPZtxh2CsvwkLn2KYZD6vztbaa_aXHkpaO1g/edit).
 2. Menu **Extensões → Apps Script**.
-3. Apague todo o código atual e cole o conteúdo de [`Code.gs`](Code.gs) deste projeto.
-4. No topo do editor, selecione a função `setup` no dropdown de funções e clique em **Executar** (▶). Autorize o script quando solicitado (inclui acesso ao **Google Drive**, usado para as fotos). Se dor erro de permissão do Drive, veja a seção de troubleshooting abaixo.
-   - Isso **corrige o cabeçalho** das abas `players`/`characters` (sem apagar as linhas já cadastradas) e **recria do zero** as abas `matches`, `actions`, `sessions` e `rounds` com o novo formato — necessário para as regras configuráveis, o timer e o placar.
-   - Importante: qualquer sala que já existia (aba `matches`) é apagada nesse reset — é esperado, já que o formato da sala mudou bastante (regras, timer, placar). Jogadores e personagens continuam intactos.
-5. Clique em **Implantar → Gerenciar implantações** → editar (lápis) a implantação existente → **Nova versão** → **Implantar**. Isso mantém a mesma URL (`.../exec`) que já está configurada no `app.js`.
+3. Apague todo o código atual e cole o conteúdo de [`Code.gs`](Code.gs) deste projeto (agora é bem menor — só cuida de receber a foto e salvar no Drive).
+4. **Implantar → Gerenciar implantações** → editar (lápis) a implantação existente → **Nova versão** → **Implantar**. Isso mantém a mesma URL (`.../exec`) que já está configurada no `app.js` (constante `PHOTO_UPLOAD_URL`).
+   - Se for a primeira vez, rode a função `getPhotosFolder` uma vez direto no editor (▶) pra autorizar o acesso ao Google Drive antes de implantar.
 
-### Se der erro de permissão do Drive
+## 3. Migrar os dados que já existiam na planilha (opcional, uma vez só)
 
-Se aparecer algo como `Exception: Você não tem permissão para chamar DriveApp...`:
+Se você já tinha jogadores/personagens/histórico cadastrados na versão antiga, veja [`migrate-node/README.md`](migrate-node/README.md) — um script que roda uma vez, localmente, e copia tudo pro Firestore (as fotos continuam apontando pro Drive, sem precisar mexer nelas).
 
-1. Acesse [myaccount.google.com/permissions](https://myaccount.google.com/permissions), ache o projeto do script e remova o acesso antigo.
-2. No editor do Apps Script, selecione `setup` no dropdown e clique em **Executar** (▶) direto no editor.
-3. Vai aparecer "Autorização necessária" → **Revisar permissões** → escolha sua conta → se aparecer "o Google não verificou este app", clique em **Avançado** → **Acessar [projeto] (não seguro)** → **Permitir**, aceitando o acesso ao Drive.
-4. Reimplante (passo 5 acima) para a versão publicada também rodar com essa autorização.
+Se estiver começando do zero, pule esta etapa — cadastre jogadores/personagens direto pelo app depois de publicado.
 
-## 2. Cadastrar jogadores e personagens
+## 4. Rodar o app
 
-- **Jogadores**: crie seu perfil direto na tela de login (nome + foto opcional do dispositivo), ou depois pela aba "Jogadores".
-- **Personagens**: cadastre pela aba "Personagens", com nome + foto do dispositivo. A foto é enviada pro Google Drive automaticamente.
+O app é 100% estático — todos os arquivos ficam juntos, sem subpastas (`index.html`, `style.css`, `app.js`, `firebase-init.js`, `manifest.json`, `service-worker.js`, os ícones .png, etc.). Isso é proposital: uploads pela interface web do GitHub não preservam pastas ao arrastar arquivos soltos, então manter tudo "achatado" na raiz evita esse problema.
 
-## 3. Rodar o app
+- Abra `index.html` direto no navegador pra testar, ou
+- Suba a pasta em qualquer hospedagem estática (GitHub Pages, Netlify, Vercel) pra jogar com amigos em dispositivos diferentes.
 
-O app é 100% estático — todos os arquivos ficam juntos, sem subpastas (`index.html`, `style.css`, `app.js`, `manifest.json`, `service-worker.js`, os ícones .png, etc.). Isso é proposital: uploads pela interface web do GitHub não preservam pastas ao arrastar arquivos soltos, então manter tudo "achatado" na raiz evita esse problema.
+**Importante para o "Instalar app" funcionar**: o service worker só registra em HTTPS ou `localhost` — abrindo o `index.html` direto do disco (`file://`) o app funciona normalmente, mas sem o prompt de instalação. Hospede num serviço com HTTPS (GitHub Pages, Netlify, Vercel são gratuitos).
 
-- Abra `index.html` direto no navegador, ou
-- Suba a pasta em qualquer hospedagem estática (GitHub Pages, Netlify, Vercel) para jogar com amigos em dispositivos diferentes.
-
-**Importante para o "Instalar app" funcionar**: o service worker (exigido pelos navegadores pra permitir instalação) só registra em HTTPS ou `localhost` — abrindo o `index.html` direto do disco (`file://`) o app funciona normalmente, mas o prompt de instalação não aparece. Hospede num serviço com HTTPS (GitHub Pages, Netlify, Vercel são gratuitos) pra habilitar isso.
+**Não suba a pasta `migrate-node/` pro GitHub Pages** — ela é só uma ferramenta local, não faz parte do site.
 
 ### Trocar os ícones pela logo oficial
 
-Os ícones (favicon, apple-touch-icon, ícones do manifest) ficam na raiz do projeto. Pra trocar, salve a imagem nos tamanhos abaixo (mesmo nome de arquivo, na raiz) e pronto — `index.html` e `manifest.json` já apontam pra esses arquivos:
+Os ícones (favicon, apple-touch-icon, ícones do manifest) ficam na raiz do projeto. Pra trocar, salve a imagem nos tamanhos abaixo (mesmo nome de arquivo, na raiz):
 
 - `favicon-16.png` (16×16)
 - `favicon-32.png` (32×32)
@@ -72,18 +77,20 @@ Os ícones (favicon, apple-touch-icon, ícones do manifest) ficam na raiz do pro
 - `icon-192.png` (192×192)
 - `icon-512.png` (512×512)
 
-## Estrutura de dados na planilha
+## Estrutura de dados no Firestore
 
-- **players**: `id`, `name`, `photo`, `photoFileId`, `createdAt`
-- **characters**: `id`, `name`, `image`, `imageFileId`
-- **matches** (salas): `id`, `code`, `status` (`waiting`/`drafting`/`countdown`/`official`/`finished`), `phase`, `turnIndex`, `playerIds`, `hostPlayerId`, `createdAt`, `draftStartedAt`, `officialStartedAt`, `banCount`, `pickCount`, `maxPlayers`, `turnTimerEnabled`, `turnTimerSeconds`, `turnDeadline`, `countdownStartedAt`, `winnerPlayerId`, `suddenDeath`, `eligiblePlayerIds`
-- **actions**: `matchId`, `playerId`, `type` (`ban`/`pick`/`timeout`), `characterId`, `round`, `timestamp`
-- **sessions**: `playerId`, `lastSeen`
-- **rounds**: `matchId`, `roundNumber`, `playerId`, `points`, `timestamp`
+- **players/{id}**: `name`, `photo` (link do Drive), `photoFileId`, `createdAt`
+- **characters/{id}**: `name`, `image` (link do Drive), `imageFileId`, `createdAt`
+- **sessions/{playerId}**: `lastSeen` (presença online/offline)
+- **rooms/{id}** (salas): `code`, `status` (`waiting`/`drafting`/`countdown`/`official`/`finished`), `phase`, `turnIndex`, `playerIds[]`, `hostPlayerId`, `createdAt`, `draftStartedAt`, `officialStartedAt`, `banCount`, `pickCount`, `maxPlayers`, `turnTimerEnabled`, `turnTimerSeconds`, `turnDeadline`, `countdownStartedAt`, `winnerPlayerId`, `suddenDeath`, `eligiblePlayerIds[]`, `bannedCharacterIds[]`, `pickedCharacterIds[]`, `scores` (mapa playerId → total)
+  - **rooms/{id}/actions/{autoId}**: `playerId`, `type` (`ban`/`pick`/`timeout`), `characterId`, `round`, `timestamp` — log de tudo que aconteceu na sala
+  - **rooms/{id}/rounds/{autoId}**: `roundNumber`, `playerId`, `points`, `timestamp` — log de pontuação por rodada
 
 ## Observações
 
-- O servidor valida tudo: fase certa, vez do jogador certa, personagem disponível, e o timer de turno é conferido a cada chamada (não depende de nenhum cliente específico estar com a tela aberta).
-- Como o Apps Script não tem "empurrão" em tempo real (sem WebSocket), a sincronização é por polling — otimizado para ser rápido no draft (~1,2s) sem sobrecarregar a planilha nos momentos menos críticos (lobby, placar).
-- "Voltar ao lobby"/"Sair da sala" só esquece a sala local (`localStorage`); os dados continuam na planilha.
-- Para resetar uma sala específica: `SEU_URL/exec?action=deleteMatch&matchId=123`.
+- **Sem servidor "oficial" de verdade**: como não há Cloud Functions (pra não precisar do plano pago), a validação de regras (vez certa, timer, condição de vitória) roda no `app.js`, no navegador de cada jogador, protegida por transações do Firestore (`runTransaction`) contra condições de corrida — mas não contra alguém tecnicamente hábil abrindo o DevTools. Pra um grupo de amigos, isso é um trade-off aceitável.
+- **Tempo real de verdade**: cada sala usa `onSnapshot` (Firestore) — qualquer escrita de qualquer jogador aparece pros outros quase instantaneamente, sem precisar de intervalo de verificação.
+- **Timer de turno**: qualquer cliente com a sala aberta pode "destravar" um turno vencido (roda um `setInterval` local que dispara uma transação quando percebe o prazo estourado) — não depende de nenhum jogador específico estar com a tela aberta, só que ALGUÉM da sala esteja.
+- **Fotos**: o Apps Script (`Code.gs`) é usado só pra receber a foto (base64) e devolver o link do Drive — ele não guarda mais nada de jogo (sem planilha de dados). Se um dia o Firebase Storage voltar a ter cota gratuita sem exigir cartão, dá pra trocar fácil (só mexer em `uploadPendingPhoto` no `app.js`).
+- "Voltar ao lobby"/"Sair da sala" só esquece a sala local (`localStorage`); os dados continuam no Firestore.
+- Pra excluir uma sala manualmente: use o ícone de lixeira no Lobby.
