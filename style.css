@@ -16,6 +16,15 @@
 
 * { box-sizing: border-box; }
 
+input, select, textarea {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 95, 109, 0.18);
+}
+
 /* ===== INSTALAR APP ===== */
 .install-banner {
   position: fixed;
@@ -52,9 +61,32 @@
 body {
   margin: 0;
   font-family: "Segoe UI", Roboto, Arial, sans-serif;
-  background: linear-gradient(180deg, #0f1117, #14171f 40%);
+  background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  position: relative;
+}
+
+/* Arte de fundo (capa em preto e branco do Smash Up) atrás de tudo — bem
+   embaçada e escurecida pra dar atmosfera sem brigar com o conteúdo por
+   cima. Duas camadas: ::before tem a imagem borrada, ::after escurece com
+   um degradê pra garantir contraste com o texto em qualquer parte da tela. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -40px;
+  background: url("fundo-lobby.jpg") center / cover no-repeat;
+  filter: grayscale(1) blur(16px) brightness(0.38) contrast(1.05);
+  transform: scale(1.08);
+  z-index: -2;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(15, 17, 23, 0.72), rgba(15, 17, 23, 0.92) 55%, var(--bg) 100%);
+  z-index: -1;
 }
 
 /* ===== LOGIN ===== */
@@ -67,15 +99,40 @@ body {
 }
 
 .login-box {
-  background: var(--panel);
+  position: relative;
+  overflow: hidden;
+  background: rgba(29, 33, 44, 0.9);
+  backdrop-filter: blur(14px);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 28px;
+  padding: 96px 28px 28px;
   width: 100%;
   max-width: 420px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+
+/* Faixa do banner oficial do jogo no topo do cartão de login, com um
+   degradê por cima pra ela "derreter" no fundo do cartão em vez de cortar
+   seco. */
+.login-box::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 80px;
+  background: url("banner-cabecalho.jpg") center 35% / cover no-repeat;
+}
+
+.login-box::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 80px;
+  background: linear-gradient(180deg, rgba(10, 12, 17, 0) 35%, rgba(29, 33, 44, 0.96) 100%);
 }
 
 .login-box h1 {
+  position: relative;
+  z-index: 1;
   margin: 0 0 4px;
   font-size: 22px;
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
@@ -169,26 +226,49 @@ body {
 .status-dot.offline { background: var(--offline); }
 
 /* ===== TOPBAR ===== */
+/* Cabeçalho vira um "hero": o banner oficial do jogo por trás do título,
+   escurecido de cima pra baixo até virar a cor sólida do painel bem no
+   fim, onde a faixa de abas fica — assim o banner nunca briga com o texto
+   nem com os botões das abas. */
 .topbar {
-  padding: 20px 24px 0;
+  position: relative;
+  padding: 0;
   border-bottom: 1px solid var(--border);
-  background: var(--panel);
+  background: #0a0c11;
+  overflow: hidden;
+}
+
+.topbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("banner-cabecalho.jpg") center 32% / cover no-repeat;
+}
+
+.topbar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10, 12, 17, 0.12) 0%, rgba(10, 12, 17, 0.58) 65%, var(--panel) 100%);
 }
 
 .topbar-top {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
+  padding: 46px 24px 16px;
+  margin-bottom: 0;
 }
 
 .topbar h1 {
   margin: 0;
-  font-size: 22px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  color: #fff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.65);
 }
 
 .current-user-box {
@@ -199,21 +279,29 @@ body {
 }
 
 .current-user-box button {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--text);
   padding: 6px 10px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
+  backdrop-filter: blur(6px);
 }
 
 .tabs {
+  position: relative;
+  z-index: 1;
   display: flex;
   gap: 4px;
+  padding: 0 24px;
+  background: var(--panel);
 }
 
 .tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   background: transparent;
   border: none;
   color: var(--text-dim);
@@ -221,12 +309,45 @@ body {
   cursor: pointer;
   font-size: 14px;
   border-bottom: 2px solid transparent;
+  transition: color 0.15s ease;
 }
+
+.tab-btn .tab-icon { opacity: 0.7; flex-shrink: 0; transition: opacity 0.15s ease; }
+.btn-icon { flex-shrink: 0; }
+
+.tab-btn:hover { color: var(--text); }
 
 .tab-btn.active {
   color: var(--text);
   border-bottom: 2px solid var(--accent);
 }
+
+.tab-btn.active .tab-icon { opacity: 1; color: var(--accent); }
+
+/* Título de seção (ícone + texto), usado em "Salas", "Jogadores" etc. */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.section-title .section-icon { color: var(--accent); flex-shrink: 0; }
+
+.empty-state-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 34px 20px;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 24px;
+}
+
+.empty-state-box svg { color: var(--text-dim); opacity: 0.6; }
+.empty-state-box p { margin: 0; font-size: 13.5px; line-height: 1.5; }
 
 main {
   max-width: 960px;
@@ -238,15 +359,29 @@ main {
 .tab-panel.active { display: block; }
 
 h2 { margin-top: 0; }
+
+h3 {
+  margin: 30px 0 14px;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+h3:first-child { margin-top: 0; }
 .hint { color: var(--text-dim); font-size: 13px; }
 
 /* ===== LOBBY ===== */
 .lobby-actions {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
+  gap: 14px;
+  align-items: center;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  background: rgba(29, 33, 44, 0.78);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 22px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
 }
 
 .join-code-form {
@@ -256,6 +391,7 @@ h2 { margin-top: 0; }
 .join-code-form input {
   text-transform: uppercase;
   max-width: 140px;
+  letter-spacing: 1px;
 }
 
 .room-list {
@@ -266,7 +402,8 @@ h2 { margin-top: 0; }
 }
 
 .room-card {
-  background: var(--panel);
+  background: rgba(29, 33, 44, 0.88);
+  backdrop-filter: blur(10px);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px 16px;
@@ -275,6 +412,14 @@ h2 { margin-top: 0; }
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.room-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
 }
 
 .room-card-info { display: flex; flex-direction: column; gap: 4px; }
@@ -436,6 +581,9 @@ h2 { margin-top: 0; }
 
 /* ===== DRAFT ===== */
 .primary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
   border: none;
   color: #1a1a1a;
@@ -444,14 +592,25 @@ h2 { margin-top: 0; }
   border-radius: var(--radius);
   cursor: pointer;
   font-size: 14px;
+  box-shadow: 0 6px 18px rgba(255, 95, 109, 0.25);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.primary-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px rgba(255, 95, 109, 0.38);
 }
 
 .primary-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   background: var(--panel-2);
   border: 1px solid var(--border);
   color: var(--text);
@@ -459,6 +618,12 @@ h2 { margin-top: 0; }
   border-radius: var(--radius);
   cursor: pointer;
   margin-top: 16px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.secondary-btn:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
 }
 
 .error { color: var(--ban); min-height: 18px; }
@@ -839,6 +1004,15 @@ h2 { margin-top: 0; }
   margin-bottom: 20px;
 }
 
+/* Botões dentro de linhas flex (formulários inline, toolbar do lobby) não
+   devem herdar o margin-top pensado pra botões "soltos" abaixo de um bloco. */
+.inline-form .secondary-btn,
+.inline-form .primary-btn,
+.lobby-actions .secondary-btn,
+.lobby-actions .primary-btn {
+  margin-top: 0;
+}
+
 .inline-form input[type=text] {
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -902,11 +1076,13 @@ h2 { margin-top: 0; }
 
 /* ===== LAYOUT MOBILE ===== */
 @media (max-width: 640px) {
-  .topbar { padding: 14px 14px 0; }
+  .topbar-top { padding: 30px 14px 12px; }
   .topbar h1 { font-size: 18px; }
+  .login-box { padding: 76px 20px 24px; }
+  .login-box::before, .login-box::after { height: 64px; }
   main { padding: 14px; }
 
-  .tabs { gap: 0; overflow-x: auto; }
+  .tabs { gap: 0; overflow-x: auto; padding: 0 14px; }
   .tab-btn { padding: 10px 12px; font-size: 13px; white-space: nowrap; }
 
   /* Grade de personagens (disponíveis/escolhidos/banidos) vira uma faixa

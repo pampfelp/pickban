@@ -55,11 +55,26 @@
       <div id="currentUserBox" class="current-user-box"></div>
     </div>
     <nav class="tabs">
-      <button class="tab-btn active" data-tab="lobby">Lobby</button>
-      <button class="tab-btn" data-tab="game">Sala</button>
-      <button class="tab-btn" data-tab="characters">Personagens</button>
-      <button class="tab-btn" data-tab="players">Jogadores</button>
-      <button class="tab-btn" data-tab="history">Histórico</button>
+      <button class="tab-btn active" data-tab="lobby">
+        <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5"></path><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"></path></svg>
+        <span>Lobby</span>
+      </button>
+      <button class="tab-btn" data-tab="game">
+        <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.5 9 8 11 4.5-2 8-6 8-11V5l-8-3z"></path></svg>
+        <span>Sala</span>
+      </button>
+      <button class="tab-btn" data-tab="characters">
+        <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
+        <span>Personagens</span>
+      </button>
+      <button class="tab-btn" data-tab="players">
+        <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        <span>Jogadores</span>
+      </button>
+      <button class="tab-btn" data-tab="history">
+        <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
+        <span>Histórico</span>
+      </button>
     </nav>
   </header>
 
@@ -68,10 +83,16 @@
     <!-- LOBBY -->
     <section id="tab-lobby" class="tab-panel active">
       <div class="lobby-actions">
-        <button id="createRoomBtn" class="primary-btn">Criar Sala</button>
+        <button id="createRoomBtn" class="primary-btn">
+          <svg class="btn-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <span>Criar Sala</span>
+        </button>
         <form id="joinCodeForm" class="inline-form join-code-form">
           <input type="text" id="joinCodeInput" placeholder="Código da sala" maxlength="5">
-          <button type="submit" class="secondary-btn">Entrar com código</button>
+          <button type="submit" class="secondary-btn">
+            <svg class="btn-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            <span>Entrar com código</span>
+          </button>
         </form>
       </div>
       <p id="lobbyError" class="error"></p>
@@ -106,10 +127,16 @@
         </div>
       </div>
 
-      <h3>Salas</h3>
+      <h3 class="section-title">
+        <svg class="section-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect></svg>
+        <span>Salas</span>
+      </h3>
       <div id="roomList" class="room-list"></div>
 
-      <h3>Jogadores</h3>
+      <h3 class="section-title">
+        <svg class="section-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        <span>Jogadores</span>
+      </h3>
       <div id="onlinePlayerList" class="online-player-list"></div>
     </section>
 

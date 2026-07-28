@@ -58,6 +58,23 @@ function escapeHtml(str) {
   }[ch]));
 }
 
+/* =========================
+   ÍCONES (SVG inline, mesmo estilo do ícone de lixeira que já existia)
+========================= */
+const ICON_PATHS = {
+  plus: '<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>',
+  arrowRight: '<line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>',
+  lock: '<rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
+  inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>',
+  trash: '<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>'
+};
+
+function icon(name, size) {
+  size = size || 16;
+  return `<svg class="icon" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ""}</svg>`;
+}
+
 function getInitials(name) {
   const parts = String(name || "?").trim().split(/\s+/);
   let initials = parts[0] ? parts[0][0] : "?";
@@ -616,7 +633,12 @@ function renderRoomList() {
   list.innerHTML = "";
 
   if (state.rooms.length === 0) {
-    list.innerHTML = `<p class="hint">Nenhuma sala aberta no momento. Crie uma!</p>`;
+    list.innerHTML = `
+      <div class="empty-state-box">
+        ${icon("inbox", 26)}
+        <p>Nenhuma sala aberta no momento.<br>Crie uma pra começar!</p>
+      </div>
+    `;
     return;
   }
 
@@ -641,13 +663,13 @@ function renderRoomList() {
     const btn = document.createElement("button");
     btn.className = isMember ? "secondary-btn" : "primary-btn";
     if (isMember) {
-      btn.textContent = "Ver sala";
+      btn.innerHTML = `${icon("eye")}<span>Ver sala</span>`;
       btn.addEventListener("click", () => enterRoom(room.matchId));
     } else if (room.status === "waiting" && room.playerCount < room.maxPlayers) {
-      btn.textContent = "Entrar";
+      btn.innerHTML = `${icon("arrowRight")}<span>Entrar</span>`;
       btn.addEventListener("click", () => joinRoomByCode(room.code));
     } else {
-      btn.textContent = "Indisponível";
+      btn.innerHTML = `${icon("lock")}<span>Indisponível</span>`;
       btn.disabled = true;
     }
     actions.appendChild(btn);
@@ -662,15 +684,7 @@ function buildDeleteRoomButton(room) {
   const trashBtn = document.createElement("button");
   trashBtn.className = "trash-btn";
   trashBtn.title = "Excluir sala";
-  trashBtn.innerHTML = `
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <polyline points="3 6 5 6 21 6"></polyline>
-      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-      <path d="M10 11v6"></path>
-      <path d="M14 11v6"></path>
-      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
-    </svg>
-  `;
+  trashBtn.innerHTML = icon("trash", 18);
   trashBtn.addEventListener("click", async () => {
     if (!confirm(`Excluir a sala ${room.code}? Isso apaga a sala e todo o progresso dela, sem volta.`)) return;
     try {
