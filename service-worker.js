@@ -1,4 +1,4 @@
-const CACHE_NAME = "smashup-pickban-v5";
+const CACHE_NAME = "smashup-pickban-v6";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -10,7 +10,7 @@ const CORE_ASSETS = [
   "./icon-512.png",
   "./apple-touch-icon.png",
   "./banner-cabecalho.jpg",
-  "./fundo-lobby.jpg"
+  "./fundo-lobby.png"
 ];
 
 self.addEventListener("install", (event) => {

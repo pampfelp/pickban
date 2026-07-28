@@ -84,19 +84,28 @@ body {
 body::before {
   content: "";
   position: fixed;
-  inset: -40px;
-  background: url("fundo-lobby.jpg") center / cover no-repeat;
-  filter: grayscale(1) blur(16px) brightness(0.62) contrast(1.1);
-  transform: scale(1.08);
+  inset: 0;
+  background: url("fundo-lobby.png") center / cover no-repeat;
+  opacity: 0.6;
   z-index: -2;
 }
 
+/* Sem escurecer por cima desta vez (a pedido) — só um degradê bem sutil
+   rente ao rodapé, pra terminar a página de forma limpa em vez de cortar
+   o padrão de ícones de repente. */
 body::after {
   content: "";
   position: fixed;
   inset: 0;
-  background: linear-gradient(180deg, rgba(15, 17, 23, 0.35), rgba(15, 17, 23, 0.72) 55%, var(--bg) 100%);
+  background: linear-gradient(180deg, rgba(15, 17, 23, 0) 88%, var(--bg) 100%);
   z-index: -1;
+}
+
+/* Rede de segurança: com o fundo mais claro/nítido, texto solto direto
+   sobre ele (fora de cartões) precisa de um pouco mais de contraste. Não
+   atrapalha nada dentro de painéis sólidos — é sutil demais pra notar ali. */
+body {
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
 }
 
 /* ===== LOGIN ===== */
@@ -432,7 +441,6 @@ body::after {
 
 /* Título de seção (ícone + texto), usado em "Salas", "Jogadores" etc. */
 .section-title {
-  display: flex;
   align-items: center;
   gap: 9px;
 }
@@ -467,13 +475,42 @@ main {
 h2 { margin-top: 0; }
 
 h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   margin: 30px 0 14px;
+  padding: 7px 14px;
   font-size: 15px;
   letter-spacing: 0.02em;
   color: var(--text);
+  background: rgba(20, 23, 31, 0.6);
+  backdrop-filter: blur(8px);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 h3:first-child { margin-top: 0; }
-.hint { color: var(--text-dim); font-size: 13px; }
+
+.hint {
+  display: inline-block;
+  color: var(--text-dim);
+  font-size: 13px;
+  background: rgba(20, 23, 31, 0.55);
+  backdrop-filter: blur(6px);
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+
+/* Dentro de painéis que já têm fundo sólido próprio (cartões, formulários),
+   a "caixinha" do .hint viraria redundante — some com ela nesses casos. */
+.room-card .hint,
+.history-card-header .hint,
+.round-form .hint,
+.rules-form .hint,
+.admin-list .hint {
+  background: none;
+  backdrop-filter: none;
+  padding: 0;
+}
 
 /* ===== LOBBY ===== */
 .lobby-actions {
@@ -509,6 +546,18 @@ h3:first-child { margin-top: 0; }
   height: 44px;
   padding-top: 0;
   padding-bottom: 0;
+}
+
+/* A caixa em si já fica com a mesma altura (acima), mas o brilho colorido
+   do primary-btn (pensado pra um botão sozinho, destacado) é grande o
+   bastante pra parecer que o botão "pesa" mais que os vizinhos nesta
+   barra apertada — encolhe só aqui, sem tirar o efeito por completo. */
+.lobby-actions .primary-btn {
+  box-shadow: 0 2px 8px rgba(255, 95, 109, 0.28);
+}
+
+.lobby-actions .primary-btn:hover:not(:disabled) {
+  box-shadow: 0 4px 14px rgba(255, 95, 109, 0.4);
 }
 
 .room-list {
@@ -588,10 +637,32 @@ h3:first-child { margin-top: 0; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   font-size: 11px;
-  width: 60px;
+  width: 66px;
   text-align: center;
+}
+
+/* Combinador de filho direto (>) de propósito — a caixinha é só pro span
+   "de fora" (que envolve a bolinha de status + o nome); sem isso, a
+   bolinha de status (também um <span>, aninhada dentro) ia virar uma
+   caixinha achatada em vez de continuar redonda. */
+.online-player-item > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(20, 23, 31, 0.6);
+  backdrop-filter: blur(6px);
+  padding: 3px 9px;
+  border-radius: 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.online-player-item > span .status-dot {
+  flex-shrink: 0;
 }
 
 /* ===== EDITOR DE REGRAS ===== */
