@@ -566,10 +566,34 @@ function stopHeartbeatLoop() {
 }
 
 /* =========================
+   MENU LATERAL (hamburguer, desktop/tablet)
+========================= */
+const sideNav = document.getElementById("sideNav");
+const sideNavBackdrop = document.getElementById("sideNavBackdrop");
+
+function openSideNav() {
+  sideNav.classList.add("open");
+  sideNavBackdrop.classList.add("open");
+}
+
+function closeSideNav() {
+  sideNav.classList.remove("open");
+  sideNavBackdrop.classList.remove("open");
+}
+
+document.getElementById("hamburgerBtn").addEventListener("click", () => {
+  sideNav.classList.contains("open") ? closeSideNav() : openSideNav();
+});
+sideNavBackdrop.addEventListener("click", closeSideNav);
+
+/* =========================
    TABS
 ========================= */
 document.querySelectorAll(".tab-btn").forEach(btn => {
-  btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+  btn.addEventListener("click", () => {
+    switchTab(btn.dataset.tab);
+    closeSideNav();
+  });
 });
 
 function switchTab(tab) {
