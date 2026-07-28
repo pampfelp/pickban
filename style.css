@@ -58,10 +58,20 @@ input:focus, select:focus, textarea:focus {
   font-size: 13px;
 }
 
+/* A cor de fallback fica no <html>, não no <body> — o body precisa ficar
+   sem fundo próprio (transparent) pra não tampar as camadas de fundo
+   (::before/::after, com z-index negativo) logo abaixo. Se o body tivesse
+   sua própria cor sólida, ela seria pintada NA FRENTE dessas camadas
+   negativas e escondia a imagem por completo (foi exatamente o bug: o
+   fundo "não aparecia"). */
+html {
+  background: var(--bg);
+}
+
 body {
   margin: 0;
   font-family: "Segoe UI", Roboto, Arial, sans-serif;
-  background: var(--bg);
+  background: transparent;
   color: var(--text);
   min-height: 100vh;
   position: relative;
@@ -76,7 +86,7 @@ body::before {
   position: fixed;
   inset: -40px;
   background: url("fundo-lobby.jpg") center / cover no-repeat;
-  filter: grayscale(1) blur(16px) brightness(0.38) contrast(1.05);
+  filter: grayscale(1) blur(16px) brightness(0.62) contrast(1.1);
   transform: scale(1.08);
   z-index: -2;
 }
@@ -85,7 +95,7 @@ body::after {
   content: "";
   position: fixed;
   inset: 0;
-  background: linear-gradient(180deg, rgba(15, 17, 23, 0.72), rgba(15, 17, 23, 0.92) 55%, var(--bg) 100%);
+  background: linear-gradient(180deg, rgba(15, 17, 23, 0.35), rgba(15, 17, 23, 0.72) 55%, var(--bg) 100%);
   z-index: -1;
 }
 
