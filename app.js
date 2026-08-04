@@ -13,7 +13,6 @@ const PHOTO_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbzXogaLlQ0F_L7
 /* =========================
    CONSTANTES
 ========================= */
-const COUNTDOWN_MS = 10 * 1000;
 const ONLINE_THRESHOLD_MS = 25 * 1000;
 const WIN_SCORE = 15;
 const HEARTBEAT_INTERVAL_MS = 10000;
@@ -41,7 +40,6 @@ let state = {
   heartbeatTimer: null,
   draftTimerInterval: null,
   turnTimerInterval: null,
-  countdownInterval: null,
   officialTimerInterval: null,
   onlineTickInterval: null,
   roomWatchdogInterval: null,
@@ -103,6 +101,28 @@ function toast(msg) {
   el.textContent = msg;
   el.classList.add("show");
   setTimeout(() => el.classList.remove("show"), 2200);
+}
+
+// Chama atenção de quem está distraído/em outra aba quando chega a vez dele
+// de banir/escolher — pisca o título da aba até a pessoa voltar o foco pra
+// cá. Ajuda a evitar que o timer de turno vença sem a pessoa nem perceber.
+const ORIGINAL_PAGE_TITLE = document.title;
+let titleFlashInterval = null;
+function flashPageTitleForMyTurn() {
+  if (document.hasFocus()) return;
+  clearInterval(titleFlashInterval);
+  let on = false;
+  titleFlashInterval = setInterval(() => {
+    document.title = on ? ORIGINAL_PAGE_TITLE : "🔔 Sua vez!";
+    on = !on;
+  }, 1000);
+  window.addEventListener("focus", stopFlashingPageTitle);
+}
+function stopFlashingPageTitle() {
+  clearInterval(titleFlashInterval);
+  titleFlashInterval = null;
+  document.title = ORIGINAL_PAGE_TITLE;
+  window.removeEventListener("focus", stopFlashingPageTitle);
 }
 
 function formatElapsed(startedAt) {
@@ -361,16 +381,46 @@ function assembleMatchState(room, actions, rounds) {
   const onlineIds = getOnlinePlayerIds();
   const currentPlayerId = room.status === "drafting" ? room.playerIds[room.turnIndex] : null;
 
+  // Rodadas anteriores à fase atual já terminaram de verdade pra todo mundo
+  // (o turno só avança de fase depois que todos os jogadores agiram nela de
+  // alguma forma). Isso serve pra distinguir, no resultado de cada jogador,
+  // um banimento/escolha normal de um turno perdido por tempo esgotado — e
+  // detectar o caso que NÃO deveria acontecer: a rodada terminou e esse
+  // jogador não tem nem ação nem timeout registrado nela (marcado como erro,
+  // pra ficar visível em vez de silenciosamente sumir do resultado).
+  const phases = buildPhases(room.banCount, room.pickCount);
+  const currentPhaseIdx = phases.indexOf(room.phase);
+  const completedPhases = currentPhaseIdx === -1 ? phases : phases.slice(0, currentPhaseIdx);
+
   const results = room.playerIds.map(pid => {
     const player = state.players.find(p => String(p.id) === String(pid));
-    const mine = banPickActions.filter(a => String(a.playerId) === String(pid));
+    const mine = actions.filter(a => String(a.playerId) === String(pid) &&
+      (a.type === "ban" || a.type === "pick" || a.type === "timeout"));
+
+    function buildSlots(type) {
+      const relevantPhases = phases.filter(ph => ph.indexOf(type) === 0);
+      const slots = [];
+      relevantPhases.forEach(ph => {
+        const action = mine.find(a => a.round === ph);
+        if (action && action.type === type) {
+          slots.push({ kind: "character", character: enrichCharacter(action.characterId) });
+        } else if (action && action.type === "timeout") {
+          slots.push({ kind: "timeout" });
+        } else if (completedPhases.includes(ph)) {
+          slots.push({ kind: "error" });
+        }
+        // fase futura (ainda não chegou a vez de ninguém nela) — não mostra nada
+      });
+      return slots;
+    }
+
     return {
       playerId: pid,
       playerName: player ? player.name : "Desconhecido",
       playerPhoto: player ? player.photo : "",
       online: onlineIds.indexOf(String(pid)) !== -1,
-      bans: mine.filter(a => a.type === "ban").map(a => enrichCharacter(a.characterId)),
-      picks: mine.filter(a => a.type === "pick").map(a => enrichCharacter(a.characterId))
+      bans: buildSlots("ban"),
+      picks: buildSlots("pick")
     };
   });
 
@@ -725,14 +775,26 @@ function buildDeleteRoomButton(room) {
   return trashBtn;
 }
 
+// Um writeBatch do Firestore aceita no máximo 500 operações — uma partida
+// bem longa (muitas ações de draft + muitas rodadas registradas) podia
+// estourar esse limite e a exclusão simplesmente falhar. Quebra em vários
+// batches de 400 (com folga) em vez de um só.
+const BATCH_CHUNK_SIZE = 400;
+
 async function deleteMatch(matchId) {
-  const batch = writeBatch(db);
   const actionsSnap = await getDocs(collection(db, "rooms", matchId, "actions"));
-  actionsSnap.forEach(d => batch.delete(d.ref));
   const roundsSnap = await getDocs(collection(db, "rooms", matchId, "rounds"));
-  roundsSnap.forEach(d => batch.delete(d.ref));
-  batch.delete(doc(db, "rooms", matchId));
-  await batch.commit();
+  const allRefs = [
+    ...actionsSnap.docs.map(d => d.ref),
+    ...roundsSnap.docs.map(d => d.ref),
+    doc(db, "rooms", matchId)
+  ];
+
+  for (let i = 0; i < allRefs.length; i += BATCH_CHUNK_SIZE) {
+    const batch = writeBatch(db);
+    allRefs.slice(i, i + BATCH_CHUNK_SIZE).forEach(ref => batch.delete(ref));
+    await batch.commit();
+  }
 }
 
 function renderOnlinePlayerList() {
@@ -774,7 +836,7 @@ document.getElementById("confirmCreateRoomBtn").addEventListener("click", async 
       playerIds: [state.me.id], hostPlayerId: state.me.id,
       createdAt: Date.now(), draftStartedAt: null, officialStartedAt: null,
       banCount, pickCount, maxPlayers,
-      turnTimerEnabled, turnTimerSeconds: 90,
+      turnTimerEnabled, turnTimerSeconds: 120,
       turnDeadline: null, countdownStartedAt: null,
       winnerPlayerId: null, suddenDeath: false, eligiblePlayerIds: [],
       bannedCharacterIds: [], pickedCharacterIds: [],
@@ -836,14 +898,14 @@ function detachRoomListeners() {
 }
 
 function clearAllTimers() {
-  [state.draftTimerInterval, state.turnTimerInterval, state.countdownInterval,
+  [state.draftTimerInterval, state.turnTimerInterval,
    state.officialTimerInterval, state.roomWatchdogInterval]
     .forEach(t => t && clearInterval(t));
   state.draftTimerInterval = null;
   state.turnTimerInterval = null;
-  state.countdownInterval = null;
   state.officialTimerInterval = null;
   state.roomWatchdogInterval = null;
+  stopFlashingPageTitle();
 }
 
 function enterMatchView() {
@@ -855,6 +917,16 @@ function enterMatchView() {
   const recompute = () => {
     if (!roomData) return;
     const match = assembleMatchState({ id: state.matchId, ...roomData }, actionsData, roundsData);
+
+    const wasMyTurn = state.lastMatch && state.lastMatch.status === "drafting" &&
+      String(state.lastMatch.currentPlayerId) === String(state.me.id);
+    const isMyTurnNow = match.status === "drafting" && String(match.currentPlayerId) === String(state.me.id);
+    if (isMyTurnNow && !wasMyTurn) {
+      const acao = match.phase && match.phase.indexOf("ban") === 0 ? "banir" : "escolher";
+      toast(`🔔 Sua vez de ${acao}!`);
+      flashPageTitleForMyTurn();
+    }
+
     state.lastMatch = match;
     renderMatch(match);
   };
@@ -881,18 +953,15 @@ function enterMatchView() {
   }, err => {});
 
   // Watchdog local: qualquer cliente com a sala aberta pode "destravar" um turno
-  // vencido ou avançar a contagem regressiva — substitui a checagem sob-demanda
-  // que o Code.gs fazia a cada chamada.
+  // vencido — substitui a checagem sob-demanda que o Code.gs fazia a cada chamada.
+  // A partida oficial NÃO inicia mais sozinha depois do draft — precisa do host
+  // clicar em "Iniciar Partida Oficial" (renderCountdownScreen/startOfficialBtn).
   state.roomWatchdogInterval = setInterval(() => {
     const match = state.lastMatch;
     if (!match || match.matchId !== state.matchId) return;
     if (match.status === "drafting" && match.rules.turnTimerEnabled && match.turnDeadline) {
       if (Date.now() > new Date(match.turnDeadline).getTime()) {
         processTimeoutTx(state.matchId).catch(() => {});
-      }
-    } else if (match.status === "countdown" && match.countdownStartedAt) {
-      if (Date.now() - new Date(match.countdownStartedAt).getTime() >= COUNTDOWN_MS) {
-        maybeAdvanceCountdownTx(state.matchId).catch(() => {});
       }
     }
   }, 1000);
@@ -907,11 +976,10 @@ function showNoMatch() {
 function renderMatch(match) {
   // Limpa só os timers de UI (cronômetros/contagem); o watchdog da sala
   // (state.roomWatchdogInterval) precisa continuar rodando entre re-renders.
-  [state.draftTimerInterval, state.turnTimerInterval, state.countdownInterval, state.officialTimerInterval]
+  [state.draftTimerInterval, state.turnTimerInterval, state.officialTimerInterval]
     .forEach(t => t && clearInterval(t));
   state.draftTimerInterval = null;
   state.turnTimerInterval = null;
-  state.countdownInterval = null;
   state.officialTimerInterval = null;
 
   const screens = ["noMatch", "waitingRoom", "draftBoard", "countdownScreen", "officialScreen", "finishedScreen"];
@@ -1027,6 +1095,24 @@ document.getElementById("leaveRoomBtn").addEventListener("click", async () => {
   switchTab("lobby");
 });
 
+// Excluir a sala de dentro dela mesma (sem precisar voltar pro Lobby pra
+// achar o ícone de lixeira) — qualquer jogador da sala pode fazer isso,
+// mesmo padrão de permissão do Lobby (sem restrição a host, já que o
+// sistema não tem login de verdade pra diferenciar identidade).
+document.getElementById("deleteRoomFromInsideBtn").addEventListener("click", async () => {
+  if (!confirm("Excluir esta sala? Isso apaga a sala e todo o progresso dela, sem volta.")) return;
+  try {
+    await deleteMatch(state.matchId);
+  } catch (err) {
+    toast("Não foi possível excluir: " + err.message);
+    return;
+  }
+  state.matchId = null;
+  localStorage.removeItem("smashup_matchId");
+  toast("Sala excluída");
+  switchTab("lobby");
+});
+
 /* ---- draft (ban/pick) ---- */
 function renderDraftBoard(match) {
   document.getElementById("phaseLabel").textContent = match.phaseLabel;
@@ -1080,6 +1166,27 @@ function renderDraftBoard(match) {
   document.getElementById("bannedGrid").classList.add("banned-grid");
 }
 
+// Cada item de r.bans/r.picks é um "slot": { kind: "character", character }
+// pra um banimento/escolha normal, { kind: "timeout" } pra um turno perdido
+// por tempo esgotado, ou { kind: "error" } pro caso (que não deveria
+// acontecer) da rodada ter terminado sem ação nem timeout desse jogador —
+// mostrar isso explicitamente em vez de simplesmente omitir é o que deixa
+// claro pro próprio jogador o que aconteceu naquela rodada.
+function renderResultSlotLine(tagClass, tagLabel, slot) {
+  const line = document.createElement("div");
+  line.className = "result-row";
+  if (slot.kind === "character") {
+    line.innerHTML = `<span class="${tagClass}">${tagLabel}</span> ${characterThumbHtml(slot.character)} ${escapeHtml(slot.character.name)}`;
+  } else if (slot.kind === "timeout") {
+    line.className += " result-row-timeout";
+    line.innerHTML = `<span class="${tagClass}">${tagLabel}</span> <span class="slot-note">(tempo esgotado)</span>`;
+  } else {
+    line.className += " result-row-error";
+    line.innerHTML = `<span class="${tagClass}">${tagLabel}</span> <span class="slot-note">(Erro)</span>`;
+  }
+  return line;
+}
+
 function renderResultsRow(container, match, showLimits) {
   container.innerHTML = "";
   match.results.forEach(r => {
@@ -1092,18 +1199,8 @@ function renderResultsRow(container, match, showLimits) {
     header.innerHTML = `${avatarHtml({ name: r.playerName, photo: r.playerPhoto }, "sm")}<h4>${escapeHtml(r.playerName)}${limitTxt}</h4>`;
     card.appendChild(header);
 
-    r.bans.forEach(c => {
-      const line = document.createElement("div");
-      line.className = "result-row";
-      line.innerHTML = `<span class="tag-ban">✕ ban</span> ${characterThumbHtml(c)} ${escapeHtml(c.name)}`;
-      card.appendChild(line);
-    });
-    r.picks.forEach(c => {
-      const line = document.createElement("div");
-      line.className = "result-row";
-      line.innerHTML = `<span class="tag-pick">✓ pick</span> ${characterThumbHtml(c)} ${escapeHtml(c.name)}`;
-      card.appendChild(line);
-    });
+    r.bans.forEach(slot => card.appendChild(renderResultSlotLine("tag-ban", "✕ ban", slot)));
+    r.picks.forEach(slot => card.appendChild(renderResultSlotLine("tag-pick", "✓ pick", slot)));
 
     container.appendChild(card);
   });
@@ -1154,8 +1251,9 @@ function buildOptimisticMatch(match, character, actionType) {
 
   const r = clone.results.find(res => String(res.playerId) === String(me.id));
   if (r) {
-    if (actionType === "ban") r.bans.push(character);
-    else r.picks.push(character);
+    const slot = { kind: "character", character };
+    if (actionType === "ban") r.bans.push(slot);
+    else r.picks.push(slot);
   }
 
   const phases = buildPhases(clone.rules.banCount, clone.rules.pickCount);
@@ -1250,18 +1348,6 @@ async function processTimeoutTx(matchId) {
   });
 }
 
-async function maybeAdvanceCountdownTx(matchId) {
-  const roomRef = doc(db, "rooms", matchId);
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(roomRef);
-    if (!snap.exists()) return;
-    const room = snap.data();
-    if (room.status !== "countdown" || !room.countdownStartedAt) return;
-    if (Date.now() - Number(room.countdownStartedAt) < COUNTDOWN_MS) return;
-    tx.update(roomRef, { status: "official", officialStartedAt: Date.now() });
-  });
-}
-
 async function confirmAction(match, character, actionType) {
   if (state.actionInFlight) return;
   state.actionInFlight = true;
@@ -1282,30 +1368,22 @@ async function confirmAction(match, character, actionType) {
   }
 }
 
-/* ---- contagem regressiva ---- */
+/* ---- fim do draft: aguarda o host iniciar a partida oficial manualmente ---- */
 function renderCountdownScreen(match) {
   const isHost = String(match.hostPlayerId) === String(state.me.id);
-  document.getElementById("skipCountdownBtn").style.display = isHost ? "inline-block" : "none";
-
-  const numberEl = document.getElementById("countdownNumber");
-  const tick = () => {
-    const elapsed = Date.now() - new Date(match.countdownStartedAt).getTime();
-    const remaining = Math.max(0, Math.ceil((COUNTDOWN_MS - elapsed) / 1000));
-    numberEl.textContent = remaining;
-  };
-  tick();
-  state.countdownInterval = setInterval(tick, 200);
+  document.getElementById("startOfficialBtn").style.display = isHost ? "inline-block" : "none";
+  document.getElementById("waitingOfficialHint").style.display = isHost ? "none" : "block";
 }
 
-document.getElementById("skipCountdownBtn").addEventListener("click", async () => {
+document.getElementById("startOfficialBtn").addEventListener("click", async () => {
   try {
     const roomRef = doc(db, "rooms", state.matchId);
     await runTransaction(db, async (tx) => {
       const snap = await tx.get(roomRef);
       if (!snap.exists()) throw new Error("Sala não encontrada");
       const room = snap.data();
-      if (room.status !== "countdown") throw new Error("Não está na contagem regressiva");
-      if (room.hostPlayerId !== state.me.id) throw new Error("Só o host pode pular a contagem");
+      if (room.status !== "countdown") throw new Error("O draft ainda não terminou");
+      if (room.hostPlayerId !== state.me.id) throw new Error("Só o host pode iniciar a partida oficial");
       tx.update(roomRef, { status: "official", officialStartedAt: Date.now() });
     });
   } catch (err) {
@@ -1362,8 +1440,9 @@ function renderScoreBoard(container, match) {
     const player = match.results.find(r => String(r.playerId) === String(e.pid));
     const card = document.createElement("div");
     card.className = "score-card" + (e.score === max && max > 0 ? " leader" : "");
-    const picksHtml = player && player.picks.length
-      ? `<div class="score-card-picks">${player.picks.map(c => characterThumbHtml(c)).join("")}</div>`
+    const realPicks = player ? player.picks.filter(s => s.kind === "character").map(s => s.character) : [];
+    const picksHtml = realPicks.length
+      ? `<div class="score-card-picks">${realPicks.map(c => characterThumbHtml(c)).join("")}</div>`
       : "";
     card.innerHTML = `
       ${avatarHtml({ name: player ? player.playerName : "?", photo: player ? player.playerPhoto : "" }, "md")}

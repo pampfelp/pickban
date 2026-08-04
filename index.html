@@ -145,7 +145,7 @@
           </label>
           <label class="checkbox-label">
             <input type="checkbox" id="ruleTurnTimer" checked>
-            Timer de 1min30s por turno (se o tempo acabar, o jogador perde a vez)
+            Timer de 2min por turno (se o tempo acabar, o jogador perde a vez)
           </label>
         </div>
         <div class="rules-actions">
@@ -185,6 +185,7 @@
         <button id="startRoomBtn" class="primary-btn" style="display:none;">Iniciar Partida</button>
         <p id="waitingHint" class="hint"></p>
         <button id="leaveRoomBtn" class="secondary-btn">Sair da sala</button>
+        <button id="deleteRoomFromInsideBtn" class="secondary-btn danger-btn">Excluir sala</button>
       </div>
 
       <!-- DRAFT (BAN/PICK) -->
@@ -217,9 +218,9 @@
       <!-- CONTAGEM REGRESSIVA -->
       <div id="countdownScreen" style="display:none;">
         <div class="countdown-box">
-          <p>Draft finalizado! A partida oficial começa em</p>
-          <div id="countdownNumber" class="countdown-number">10</div>
-          <button id="skipCountdownBtn" class="secondary-btn" style="display:none;">Pular contagem e iniciar agora</button>
+          <p>Draft finalizado!</p>
+          <button id="startOfficialBtn" class="primary-btn" style="display:none;">Iniciar Partida Oficial</button>
+          <p id="waitingOfficialHint" class="hint" style="display:none;">Aguardando o host iniciar a partida oficial...</p>
         </div>
       </div>
 
